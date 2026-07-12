@@ -48,6 +48,7 @@ const state = {
     mediaUploading: false,
     courseImageDraft: [],
     courseImageUploading: false,
+    googleCalendar: null,
     data: null,
     error: ''
   },
@@ -192,7 +193,13 @@ async function loadInitial() {
   state.courses = data.courses || [];
   state.media = data.media || { gallery: [], carousel: [], categories: [] };
   state.booking.date = todayLocal();
-  if (state.mode === 'admin') await checkAdmin();
+  if (state.mode === 'admin') {
+    await checkAdmin();
+    if (new URLSearchParams(location.search).has('gcal')) {
+      state.admin.tab = 'integraciones';
+      if (state.admin.loggedIn) loadGoogleCalendarStatus();
+    }
+  }
   render();
 }
 
@@ -1106,7 +1113,7 @@ function adminScreen() {
       <div class="card"><div class="eyebrow">NOTIFICACIONES</div><div class="stat-number">${esc(data?.unreadNotifications || 0)}</div></div>
     </div>
     <div class="pill-row admin-tabs">
-      ${[['agenda','AGENDA'],['notificaciones',`NOTIFICACIONES${data?.unreadNotifications ? ` (${data.unreadNotifications})` : ''}`],['servicios','SERVICIOS'],['promociones','PROMOCIONES'],['clientas','CLIENTAS'],['academia','ACADEMIA'],['galeria','GALERÍA'],['publicar','PUBLICAR']].map(([id,label]) => `<button class="pill-button ${state.admin.tab === id ? 'active' : ''}" data-admin-tab="${id}">${label}</button>`).join('')}
+      ${[['agenda','AGENDA'],['notificaciones',`NOTIFICACIONES${data?.unreadNotifications ? ` (${data.unreadNotifications})` : ''}`],['servicios','SERVICIOS'],['promociones','PROMOCIONES'],['clientas','CLIENTAS'],['academia','ACADEMIA'],['galeria','GALERÍA'],['publicar','PUBLICAR'],['integraciones','INTEGRACIONES']].map(([id,label]) => `<button class="pill-button ${state.admin.tab === id ? 'active' : ''}" data-admin-tab="${id}">${label}</button>`).join('')}
     </div>
     ${state.admin.error ? `<div class="error-box">${esc(state.admin.error)}</div>` : ''}
     ${state.admin.tab === 'agenda' ? adminAgenda(data) : ''}
@@ -1117,6 +1124,7 @@ function adminScreen() {
     ${state.admin.tab === 'academia' ? adminAcademia(data) : ''}
     ${state.admin.tab === 'galeria' ? adminGallery(data) : ''}
     ${state.admin.tab === 'publicar' ? adminPublish(data) : ''}
+    ${state.admin.tab === 'integraciones' ? adminIntegrations() : ''}
   </section>`;
 }
 
@@ -1131,7 +1139,6 @@ function adminLoginScreen() {
       <div class="form-field"><label>Contraseña</label><input data-admin-field="password" value="${esc(state.admin.password)}" type="password" placeholder="rococo2026"></div>
       ${state.admin.error ? `<div class="error-box">${esc(state.admin.error)}</div>` : ''}
       <button class="btn btn-dark" data-admin-login>ENTRAR</button>
-      <div class="subtitle" style="margin-top:12px">Demo local: admin@blackrococo.mx / rococo2026. Cámbialo con variables ADMIN_EMAIL y ADMIN_PASSWORD.</div>
     </div>
     <button class="pill-button" style="margin-top:18px" data-action="client">VOLVER AL SITIO</button>
   </section>`;
@@ -1521,6 +1528,52 @@ function adminPublish(data) {
   </div>`;
 }
 
+function adminIntegrations() {
+  const gcal = state.admin.googleCalendar;
+  const params = new URLSearchParams(location.search);
+  const gcalParam = params.get('gcal');
+  const banner = gcalParam === 'connected'
+    ? `<div class="card" style="border-color:#2e7d32;margin-bottom:16px">✅ Google Calendar conectado correctamente.</div>`
+    : gcalParam === 'denied'
+      ? `<div class="error-box">La conexión fue cancelada o el enlace expiró. Intenta de nuevo.</div>`
+      : gcalParam === 'error'
+        ? `<div class="error-box">Ocurrió un error al conectar. Intenta de nuevo o revisa la configuración.</div>`
+        : '';
+
+  if (!gcal) {
+    return `<div class="card-list">${banner}<div class="card"><div class="eyebrow">GOOGLE CALENDAR</div><div class="subtitle">Cargando estado...</div></div></div>`;
+  }
+
+  return `<div class="card-list">
+    ${banner}
+    <div class="card">
+      <div class="eyebrow">GOOGLE CALENDAR</div>
+      <div class="title" style="font-size:20px;margin:8px 0">${gcal.connected ? 'Conectado ✓' : 'No conectado'}</div>
+      ${gcal.connected
+        ? `<div class="subtitle">Cuenta: ${esc(gcal.email)}</div><div class="subtitle" style="margin-bottom:14px">Cada nueva reserva bloquea tu calendario automáticamente. Cancelar una cita libera el espacio.</div><button class="pill-button" data-gcal-disconnect>DESCONECTAR</button>`
+        : gcal.configured
+          ? `<div class="subtitle" style="margin-bottom:14px">Conecta tu cuenta de Google para bloquear tu calendario automáticamente en cada reserva.</div><a class="btn btn-primary" href="/api/admin/google-calendar/connect">CONECTAR GOOGLE CALENDAR</a>`
+          : `<div class="subtitle">Falta configurar GOOGLE_OAUTH_CLIENT_ID y GOOGLE_OAUTH_CLIENT_SECRET en el servidor. Ver docs/GOOGLE_CALENDAR_SETUP.md.</div>`
+      }
+    </div>
+  </div>`;
+}
+
+async function loadGoogleCalendarStatus() {
+  try {
+    state.admin.googleCalendar = await api('/api/admin/google-calendar/status');
+  } catch (err) {
+    state.admin.googleCalendar = { configured: false, connected: false, email: '' };
+  }
+  render();
+}
+
+async function disconnectGoogleCalendar() {
+  if (!confirm('¿Desconectar Google Calendar? Las citas ya no se bloquearán automáticamente.')) return;
+  await api('/api/admin/google-calendar/disconnect', { method: 'POST' });
+  await loadGoogleCalendarStatus();
+}
+
 function render() {
   if (!state.config) return;
   const body = state.mode === 'admin'
@@ -1659,11 +1712,13 @@ app.addEventListener('click', async event => {
   }
   if (target.hasAttribute('data-admin-login')) return adminLogin();
   if (target.hasAttribute('data-logout')) return adminLogout();
+  if (target.hasAttribute('data-gcal-disconnect')) return disconnectGoogleCalendar();
   if (target.dataset.markNotification) return markNotificationRead(target.dataset.markNotification);
   if (target.hasAttribute('data-mark-all-notifications')) return markAllNotificationsRead();
   if (target.dataset.adminTab) {
     state.admin.tab = target.dataset.adminTab;
     if (state.admin.tab !== 'clientas') state.admin.selectedClientId = null;
+    if (state.admin.tab === 'integraciones') loadGoogleCalendarStatus();
     return render();
   }
   if (target.dataset.clientProfile) {

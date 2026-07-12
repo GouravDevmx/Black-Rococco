@@ -1,10 +1,10 @@
 /*
-  Black Rococo platform server — thin bootstrap only.
+  Black Rococo server — thin bootstrap only.
 
-  This file wires together: static file serving, per-request tenant
-  resolution (see lib/tenant.js), and dispatch to feature modules under
-  lib/domains/. It should rarely need edits on its own — if you're fixing
-  or adding a feature, the file you want is almost certainly one of:
+  This file wires together: static file serving and dispatch to feature
+  modules under lib/domains/. It should rarely need edits on its own — if
+  you're fixing or adding a feature, the file you want is almost certainly
+  one of:
 
     lib/domains/services.js        Admin -> SERVICIOS (services CRUD, featured toggle)
     lib/domains/promotions.js      Admin -> PROMOCIONES (discount engine + CRUD)
@@ -17,25 +17,26 @@
     lib/domains/admin-auth.js      Login/logout/session verification
     lib/domains/admin-dashboard.js The main admin dashboard aggregation route
     lib/domains/admin-uploads.js   File upload handling
+    lib/domains/google-calendar.js Automatic Google Calendar sync (OAuth connect + event create/delete)
     lib/domains/whatsapp.js        WhatsApp/Calendar link + message wording
     lib/domains/appointments.js    Shapes a raw appointment into its public view
     lib/domains/availability.js    Slot overlap/availability calculation
 
-  Runs on a local JSON file by default (zero setup, offline-friendly demo
-  mode). Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY to run as a real
-  multi-tenant SaaS backend: one deployment serving multiple salons, each
-  resolved per request (subdomain, ?salon= query param, or X-Salon-Slug
-  header - see lib/tenant.js). See docs/SAAS_DEPLOYMENT.md.
+  This app serves exactly ONE salon (Black Rococo). Runs on a local JSON
+  file by default (zero setup, offline-friendly demo mode). Set
+  SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY to persist to a real Postgres
+  database instead — the salon is resolved once at boot (see below), not
+  per-request. See docs/SAAS_DEPLOYMENT.md.
 */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const { resolveSalonFromRequest } = require('./lib/tenant');
+const { getSalonBySlug } = require('./lib/tenant');
 const { readDb } = require('./lib/db');
 const { json, text } = require('./lib/helpers');
 const {
-  PUBLIC_DIR, PORT, ADMIN_EMAIL, ADMIN_PASSWORD, USE_SUPABASE, CLIENT_REMINDER_HOURS
+  PUBLIC_DIR, PORT, ADMIN_EMAIL, ADMIN_PASSWORD, USE_SUPABASE, SALON_SLUG, CLIENT_REMINDER_HOURS
 } = require('./lib/config');
 
 const publicConfig = require('./lib/domains/public-config');
@@ -50,6 +51,12 @@ const postsDomain = require('./lib/domains/posts');
 const notificationsDomain = require('./lib/domains/notifications');
 const adminDashboard = require('./lib/domains/admin-dashboard');
 const adminUploads = require('./lib/domains/admin-uploads');
+const googleCalendarDomain = require('./lib/domains/google-calendar');
+
+// Resolved once at boot (see startServer below), not per-request. null in
+// local JSON-file mode.
+let SALON_ID = null;
+let SALON = null;
 
 async function handleApi(req, res, pathname, url) {
   try {
@@ -57,20 +64,12 @@ async function handleApi(req, res, pathname, url) {
       return json(res, 200, { ok: true, service: 'black-rococo', time: new Date().toISOString() });
     }
 
-    let salonId = null;
-    let salon = null;
-    if (USE_SUPABASE) {
-      const resolved = await resolveSalonFromRequest(req, url);
-      salon = resolved.salon;
-      if (!salon) {
-        return json(res, 404, {
-          error: resolved.slug
-            ? `No se encontró el salón "${resolved.slug}". Verifica la URL o el parámetro ?salon=.`
-            : 'No se especificó ningún salón. Agrega ?salon=tu-slug a la URL (o configura un subdominio).'
-        });
-      }
-      salonId = salon.id;
+    if (req.method === 'GET' && pathname === '/api/admin/google-calendar/callback') {
+      return googleCalendarDomain.handleCallbackRoute(req, res, url, SALON_ID);
     }
+
+    const salonId = SALON_ID;
+    const salon = SALON;
 
     // --- Public routes (no admin session required) ---
     const publicCtx = { req, res, pathname, url, salonId, salon };
@@ -89,9 +88,9 @@ async function handleApi(req, res, pathname, url) {
     }
     if (await adminAuth.handlePublicRoutes(publicCtx)) return;
 
-    // --- Admin routes (session required, scoped to the resolved salon) ---
+    // --- Admin routes (session required) ---
     if (pathname.startsWith('/api/admin/')) {
-      if (!adminAuth.requireAdmin(req, res, salonId)) return;
+      if (!adminAuth.requireAdmin(req, res)) return;
       const db = await readDb(salonId);
       const adminCtx = { req, res, pathname, url, db, salonId, salon };
 
@@ -105,6 +104,7 @@ async function handleApi(req, res, pathname, url) {
       if (await coursesDomain.handleAdminRoutes(adminCtx)) return;
       if (await mediaDomain.handleAdminRoutes(adminCtx)) return;
       if (await postsDomain.handleAdminRoutes(adminCtx)) return;
+      if (await googleCalendarDomain.handleAdminRoutes(adminCtx)) return;
     }
 
     return json(res, 404, { error: 'API route not found' });
@@ -160,11 +160,30 @@ const server = http.createServer((req, res) => {
   return serveStatic(req, res, pathname);
 });
 
-setTimeout(() => notificationsDomain.processClientReminders().catch(err => console.error('processClientReminders error:', err.message)), 5000);
-setInterval(() => notificationsDomain.processClientReminders().catch(err => console.error('processClientReminders error:', err.message)), 10 * 60 * 1000);
+async function startServer() {
+  if (USE_SUPABASE) {
+    const salon = await getSalonBySlug(SALON_SLUG);
+    if (!salon) {
+      console.error(`\nFATAL: no salon found with slug "${SALON_SLUG}" in Supabase.`);
+      console.error('Run sql/schema.sql (or check the salons table) and set SALON_SLUG to match, then restart.\n');
+      process.exit(1);
+    }
+    SALON = salon;
+    SALON_ID = salon.id;
+    console.log(`Connected to Supabase salon "${salon.name}" (slug: ${SALON_SLUG}).`);
+  }
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Black Rococo MVP running on port ${PORT}`);
-  console.log(`Admin login: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
-  console.log(`Reminder checks: ${CLIENT_REMINDER_HOURS.join(', ')} hours before appointment`);
+  setTimeout(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 5000);
+  setInterval(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 10 * 60 * 1000);
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Black Rococo MVP running on port ${PORT}`);
+    console.log(`Admin login: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
+    console.log(`Reminder checks: ${CLIENT_REMINDER_HOURS.join(', ')} hours before appointment`);
+  });
+}
+
+startServer().catch(err => {
+  console.error('FATAL: failed to start server:', err.message);
+  process.exit(1);
 });

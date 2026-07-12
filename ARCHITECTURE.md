@@ -17,26 +17,37 @@ need editing for a feature change.
 | Booking flow, available time slots, double-booking | `lib/domains/bookings.js` |
 | Availability/overlap math specifically | `lib/domains/availability.js` |
 | Admin notifications, webhook delivery, client reminders | `lib/domains/notifications.js` |
-| WhatsApp message wording, Google Calendar links | `lib/domains/whatsapp.js` |
+| Google Calendar auto-sync (connect, create/delete events) | `lib/domains/google-calendar.js`, `lib/googleCalendarClient.js` |
+| WhatsApp message wording, Google Calendar links (manual/one-click) | `lib/domains/whatsapp.js` |
 | What an appointment "looks like" in API responses | `lib/domains/appointments.js` |
 | Admin dashboard numbers/aggregation | `lib/domains/admin-dashboard.js` |
-| Admin login, sessions, "who can see this salon's data" | `lib/domains/admin-auth.js` |
+| Admin login, sessions | `lib/domains/admin-auth.js` |
 | File/photo uploads | `lib/domains/admin-uploads.js` |
 | Legacy "Publicar" quick social post log | `lib/domains/posts.js` |
 | Public `/api/config` response shape | `lib/domains/public-config.js` |
-| Multi-tenant resolution (subdomain/`?salon=`/header) | `lib/tenant.js` |
+| Which salon this deployment serves (resolved once at boot) | `lib/tenant.js` |
 | Supabase vs local-JSON storage switch | `lib/store.js` (Supabase queries), `lib/db.js` (glue), `lib/migrate.js` (shape normalization/defaults) |
-| Password hashing, session tokens | `lib/auth.js` |
+| Password hashing, OAuth state signing | `lib/auth.js` |
 | Env vars / feature flags | `lib/config.js` |
 | Generic string/date/phone validation, JSON response helpers | `lib/helpers.js` |
 | Client-side UI (any screen, any admin tab) | `public/app.js` (not yet split — see note below) |
 | Visual styling | `public/styles.css` |
 
+## Single-salon, not multi-tenant
+
+This app serves **one salon** (Black Rococo). Earlier drafts explored a
+multi-tenant architecture (many salons on one deployment, resolved per
+request) — that was deliberately rolled back in favor of a simpler, more
+robust single-salon design once real bugs surfaced under that complexity.
+If multi-salon support is ever needed again, `lib/tenant.js`'s
+`getSalonBySlug()` and the `salon_id` columns throughout `sql/schema.sql`
+are still there as a foundation, but nothing in the current request path
+resolves a salon per-request anymore — it's resolved once at server boot.
+
 ## How a request flows through the code
 
-1. `server.js` receives the HTTP request, resolves which salon it belongs
-   to (if running in Supabase mode), and loads that salon's data via
-   `lib/db.js`.
+1. `server.js` receives the HTTP request and loads the (single, fixed)
+   salon's data via `lib/db.js`.
 2. It hands the request to whichever `lib/domains/*.js` module's
    `handlePublicRoutes` or `handleAdminRoutes` function claims it (each
    returns `true` if it handled the request, `false` to let the next module
@@ -45,7 +56,7 @@ need editing for a feature change.
    `db` object using the same shape the app has always used) and writes
    the JSON response.
 4. If anything changed, `lib/db.js`'s `writeDb()` persists it — to
-   `data/db.json` locally, or to the real Supabase tables in SaaS mode.
+   `data/db.json` locally, or to the real Supabase tables if configured.
 
 ## Cross-module dependencies (for when a fix touches more than one file)
 
