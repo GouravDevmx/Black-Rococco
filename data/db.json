@@ -1,0 +1,260 @@
+{
+  "settings": {
+    "brand": {
+      "name": "BLACK ROCOCO",
+      "tagline": "ESTUDIO PROFESIONAL DE UÑAS · EST. 2016",
+      "heroTitle": "Uñas de revista, hechas a tu medida",
+      "heroSubtitle": "EDITORIAL NAILS, MADE FOR YOU",
+      "specialties": "MANICURE RUSO · POLIGEL",
+      "rating": "4.9",
+      "socialProof": "+600 clientas felices en Zapopan",
+      "footer": "© 2026 BLACK ROCOCO · EST. 2016"
+    },
+    "contact": {
+      "address1": "Calzada de los Pirules 260, Ciudad Granja",
+      "address2": "Zapopan, Jalisco · Ventana y portón verde",
+      "hours1": "Lun – Sáb · 10:00 – 20:00",
+      "hours2": "Domingo cerrado",
+      "whatsappNumber": "33 2655 3522",
+      "whatsappUrl": "https://api.whatsapp.com/send/?phone=5213326553522&text=Hola%2C+quiero+agendar+una+cita+%E2%9C%A8",
+      "mapsUrl": "https://www.google.com/maps/search/?api=1&query=Calzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan%2C+Jalisco",
+      "instagramUrl": "https://www.instagram.com/black.rococo/",
+      "instagramHandle": "@black.rococo",
+      "tiktokUrl": "https://www.tiktok.com/@black.rococo"
+    },
+    "promo": {
+      "enabled": true,
+      "label": "SOLO ESTA SEMANA",
+      "title": "−15% en tu primera aplicación de poligel",
+      "note": "Cupo limitado · menciona la promo al confirmar tu cita"
+    },
+    "booking": {
+      "times": [
+        "10:00",
+        "11:00",
+        "12:00",
+        "13:00",
+        "14:00",
+        "16:00",
+        "17:00",
+        "18:00",
+        "19:00"
+      ],
+      "confirmNote": "Te esperamos en Calz. de los Pirules 260, Ciudad Granja (ventana y portón verde). Puedes cancelar hasta 12 h antes."
+    },
+    "featuredServiceIds": [
+      "rusogelish",
+      "poligel",
+      "pedispa"
+    ],
+    "gallery": [
+      {
+        "title": "Set editorial",
+        "imageUrl": ""
+      },
+      {
+        "title": "Poligel natural",
+        "imageUrl": ""
+      },
+      {
+        "title": "Rubber base",
+        "imageUrl": ""
+      },
+      {
+        "title": "Manicure ruso",
+        "imageUrl": ""
+      },
+      {
+        "title": "Nail art",
+        "imageUrl": ""
+      },
+      {
+        "title": "Pedicure spa",
+        "imageUrl": ""
+      }
+    ],
+    "notifications": {
+      "adminPanel": true,
+      "googleCalendar": "webhook",
+      "whatsappAdmin": "webhook",
+      "clientReminders": [
+        24,
+        2
+      ]
+    }
+  },
+  "services": [
+    {
+      "id": "ruso",
+      "cat": "MANOS",
+      "name": "Manicure ruso",
+      "desc": "Técnica en seco con cutícula impecable, acabado de larga duración.",
+      "price": 350,
+      "dur": 60,
+      "active": true,
+      "sort": 10
+    },
+    {
+      "id": "rusogelish",
+      "cat": "MANOS",
+      "name": "Manicure ruso + gelish",
+      "desc": "Nuestra especialidad: manicure ruso con esmaltado semipermanente.",
+      "price": 500,
+      "dur": 90,
+      "active": true,
+      "sort": 20
+    },
+    {
+      "id": "poligel",
+      "cat": "MANOS",
+      "name": "Poligel · aplicación completa",
+      "desc": "Uñas esculpidas en poligel, ligeras y resistentes. Incluye gelish.",
+      "price": 750,
+      "dur": 120,
+      "active": true,
+      "sort": 30
+    },
+    {
+      "id": "retoquepoli",
+      "cat": "MANOS",
+      "name": "Retoque de poligel",
+      "desc": "Renueva tu aplicación previa, incluye esmaltado.",
+      "price": 600,
+      "dur": 90,
+      "active": true,
+      "sort": 40
+    },
+    {
+      "id": "rubber",
+      "cat": "MANOS",
+      "name": "Nivelación con rubber",
+      "desc": "Refuerza la uña natural con base rubber, incluye gelish.",
+      "price": 480,
+      "dur": 75,
+      "active": true,
+      "sort": 50
+    },
+    {
+      "id": "pedispa",
+      "cat": "PIES",
+      "name": "Pedicure spa",
+      "desc": "Exfoliación, mascarilla, masaje y esmaltado.",
+      "price": 600,
+      "dur": 60,
+      "active": true,
+      "sort": 60
+    },
+    {
+      "id": "gelishpies",
+      "cat": "PIES",
+      "name": "Gelish pies",
+      "desc": "Esmaltado semipermanente para pies.",
+      "price": 450,
+      "dur": 45,
+      "active": true,
+      "sort": 70
+    },
+    {
+      "id": "nailart",
+      "cat": "EXTRAS",
+      "name": "Nail art por uña",
+      "desc": "Diseño a mano alzada, efectos y pedrería.",
+      "price": 50,
+      "dur": 10,
+      "active": true,
+      "sort": 80
+    },
+    {
+      "id": "retiro",
+      "cat": "EXTRAS",
+      "name": "Retiro de material",
+      "desc": "Retiro cuidadoso de gelish o acrílico.",
+      "price": 150,
+      "dur": 30,
+      "active": true,
+      "sort": 90
+    }
+  ],
+  "clients": [
+    {
+      "id": "cli_1001",
+      "name": "María López",
+      "whatsapp": "3312345678",
+      "createdAt": "2026-07-01T18:00:00.000Z",
+      "email": "",
+      "instagram": "",
+      "birthday": "",
+      "styleChoice": "Natural elegante / french fino",
+      "colorChoice": "Nude rosado y blanco lechoso",
+      "drinkChoice": "Café americano",
+      "timePreference": "Mañanas entre 10:00 y 12:00",
+      "notes": "Prefiere uñas medianas, acabado limpio y sin mucha pedrería.",
+      "allergies": "",
+      "updatedAt": "2026-07-01T18:00:00.000Z"
+    },
+    {
+      "id": "cli_1002",
+      "name": "Ana Torres",
+      "whatsapp": "3322221111",
+      "createdAt": "2026-07-01T18:00:00.000Z",
+      "email": "",
+      "instagram": "",
+      "birthday": "",
+      "styleChoice": "Pedicure clásico con gel",
+      "colorChoice": "Rojo vino",
+      "drinkChoice": "Té caliente",
+      "timePreference": "Tardes después de 14:00",
+      "notes": "",
+      "allergies": "Piel sensible, evitar exfoliante fuerte.",
+      "updatedAt": "2026-07-01T18:00:00.000Z"
+    }
+  ],
+  "appointments": [
+    {
+      "id": "apt_1001",
+      "folio": "BR-1001",
+      "clientId": "cli_1001",
+      "serviceId": "rusogelish",
+      "date": "2026-07-03",
+      "time": "10:00",
+      "status": "confirmed",
+      "createdAt": "2026-07-01T18:00:00.000Z",
+      "remindersSent": {},
+      "preferencesSnapshot": {
+        "styleChoice": "Natural elegante / french fino",
+        "colorChoice": "Nude rosado y blanco lechoso",
+        "drinkChoice": "Café americano",
+        "timePreference": "Mañanas entre 10:00 y 12:00",
+        "notes": "Prefiere uñas medianas, acabado limpio y sin mucha pedrería.",
+        "allergies": ""
+      }
+    },
+    {
+      "id": "apt_1002",
+      "folio": "BR-1002",
+      "clientId": "cli_1002",
+      "serviceId": "pedispa",
+      "date": "2026-07-03",
+      "time": "14:00",
+      "status": "new",
+      "createdAt": "2026-07-02T18:00:00.000Z",
+      "remindersSent": {},
+      "preferencesSnapshot": {
+        "styleChoice": "Pedicure clásico con gel",
+        "colorChoice": "Rojo vino",
+        "drinkChoice": "Té caliente",
+        "timePreference": "Tardes después de 14:00",
+        "notes": "",
+        "allergies": "Piel sensible, evitar exfoliante fuerte."
+      }
+    }
+  ],
+  "posts": [],
+  "counters": {
+    "appointment": 1002,
+    "client": 1002,
+    "post": 1000,
+    "notification": 1000
+  },
+  "notifications": []
+}
