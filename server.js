@@ -74,7 +74,7 @@ async function handleApi(req, res, pathname, url) {
     // --- Public routes (no admin session required) ---
     const publicCtx = { req, res, pathname, url, salonId, salon };
 
-    if ((req.method === 'POST' && pathname === '/api/bookings') || (req.method === 'GET' && pathname === '/api/availability')) {
+    if ((req.method === 'POST' && pathname === '/api/bookings') || (req.method === 'GET' && pathname === '/api/availability') || (req.method === 'GET' && pathname === '/api/rebook')) {
       const db = await readDb(salonId);
       if (await bookings.handlePublicRoutes({ ...publicCtx, db })) return;
     }
@@ -109,7 +109,8 @@ async function handleApi(req, res, pathname, url) {
 
     return json(res, 404, { error: 'API route not found' });
   } catch (err) {
-    return json(res, 500, { error: err.message || 'Server error' });
+    console.error(`[${new Date().toISOString()}] ${req.method} ${pathname} ->`, err.stack || err.message);
+    return json(res, 500, { error: 'Ocurrió un error inesperado. Intenta de nuevo en unos momentos.' });
   }
 }
 

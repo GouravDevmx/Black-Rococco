@@ -81,8 +81,7 @@
         24,
         2
       ]
-    },
-    "googleCalendarIntegration": {}
+    }
   },
   "services": [
     {
@@ -93,8 +92,7 @@
       "price": 350,
       "dur": 60,
       "active": true,
-      "sort": 10,
-      "imageUrl": ""
+      "sort": 10
     },
     {
       "id": "rusogelish",
@@ -104,8 +102,7 @@
       "price": 500,
       "dur": 90,
       "active": true,
-      "sort": 20,
-      "imageUrl": ""
+      "sort": 20
     },
     {
       "id": "poligel",
@@ -115,8 +112,7 @@
       "price": 750,
       "dur": 120,
       "active": true,
-      "sort": 30,
-      "imageUrl": ""
+      "sort": 30
     },
     {
       "id": "retoquepoli",
@@ -126,8 +122,7 @@
       "price": 600,
       "dur": 90,
       "active": true,
-      "sort": 40,
-      "imageUrl": ""
+      "sort": 40
     },
     {
       "id": "rubber",
@@ -137,8 +132,7 @@
       "price": 480,
       "dur": 75,
       "active": true,
-      "sort": 50,
-      "imageUrl": ""
+      "sort": 50
     },
     {
       "id": "pedispa",
@@ -148,8 +142,7 @@
       "price": 600,
       "dur": 60,
       "active": true,
-      "sort": 60,
-      "imageUrl": ""
+      "sort": 60
     },
     {
       "id": "gelishpies",
@@ -159,8 +152,7 @@
       "price": 450,
       "dur": 45,
       "active": true,
-      "sort": 70,
-      "imageUrl": ""
+      "sort": 70
     },
     {
       "id": "nailart",
@@ -170,8 +162,7 @@
       "price": 50,
       "dur": 10,
       "active": true,
-      "sort": 80,
-      "imageUrl": ""
+      "sort": 80
     },
     {
       "id": "retiro",
@@ -181,8 +172,7 @@
       "price": 150,
       "dur": 30,
       "active": true,
-      "sort": 90,
-      "imageUrl": ""
+      "sort": 90
     }
   ],
   "clients": [
@@ -217,22 +207,6 @@
       "notes": "",
       "allergies": "Piel sensible, evitar exfoliante fuerte.",
       "updatedAt": "2026-07-01T18:00:00.000Z"
-    },
-    {
-      "id": "cli_1003",
-      "name": "Final",
-      "whatsapp": "3300009999",
-      "email": "",
-      "instagram": "",
-      "birthday": "",
-      "styleChoice": "",
-      "colorChoice": "",
-      "drinkChoice": "",
-      "timePreference": "",
-      "notes": "",
-      "allergies": "",
-      "createdAt": "2026-07-12T06:10:55.745Z",
-      "updatedAt": "2026-07-12T06:10:55.745Z"
     }
   ],
   "appointments": [
@@ -253,8 +227,7 @@
         "timePreference": "Mañanas entre 10:00 y 12:00",
         "notes": "Prefiere uñas medianas, acabado limpio y sin mucha pedrería.",
         "allergies": ""
-      },
-      "googleEventId": null
+      }
     },
     {
       "id": "apt_1002",
@@ -273,89 +246,15 @@
         "timePreference": "Tardes después de 14:00",
         "notes": "",
         "allergies": "Piel sensible, evitar exfoliante fuerte."
-      },
-      "googleEventId": null
-    },
-    {
-      "id": "apt_1003",
-      "folio": "BR-1003",
-      "clientId": "cli_1003",
-      "serviceId": "ruso",
-      "date": "2026-09-10",
-      "time": "11:00",
-      "status": "new",
-      "preferencesSnapshot": {
-        "styleChoice": "",
-        "colorChoice": "",
-        "drinkChoice": "",
-        "timePreference": "",
-        "notes": "",
-        "allergies": ""
-      },
-      "finalPrice": 350,
-      "appliedPromotion": null,
-      "remindersSent": {},
-      "createdAt": "2026-07-12T06:10:55.746Z"
+      }
     }
   ],
   "posts": [],
   "counters": {
-    "appointment": 1003,
-    "client": 1003,
+    "appointment": 1002,
+    "client": 1002,
     "post": 1000,
-    "notification": 1003,
-    "promotion": 1000,
-    "course": 1000,
-    "registration": 1000,
-    "service": 1000,
-    "media": 1000
+    "notification": 1000
   },
-  "notifications": [
-    {
-      "id": "not_1001",
-      "kind": "new_booking",
-      "channel": "admin_panel",
-      "title": "Nueva cita BR-1003",
-      "message": "Final reservó Manicure ruso el 2026-09-10 a las 11:00.",
-      "appointmentId": "apt_1003",
-      "status": "unread",
-      "unread": true,
-      "actionLabel": "Ver agenda",
-      "actionUrl": "",
-      "createdAt": "2026-07-12T06:10:55.751Z",
-      "updatedAt": "2026-07-12T06:10:55.751Z"
-    },
-    {
-      "id": "not_1002",
-      "kind": "google_calendar",
-      "channel": "google_calendar",
-      "title": "Google Calendar: BR-1003",
-      "message": "Conecta Google Calendar en Admin → Integraciones para crear eventos automáticamente.",
-      "appointmentId": "apt_1003",
-      "status": "setup_required",
-      "unread": true,
-      "actionLabel": "Agregar manualmente",
-      "actionUrl": "https://calendar.google.com/calendar/render?action=TEMPLATE&text=Black+Rococo+-+Manicure+ruso+-+Final&dates=20260910T110000%2F20260910T120000&ctz=America%2FMexico_City&details=Folio%3A+BR-1003%0AClienta%3A+Final%0AWhatsApp%3A+3300009999%0AServicio%3A+Manicure+ruso%0AEstado%3A+NUEVA&location=Calzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan%2C+Jalisco+%C2%B7+Ventana+y+port%C3%B3n+verde",
-      "createdAt": "2026-07-12T06:10:55.751Z",
-      "updatedAt": "2026-07-12T06:10:55.751Z"
-    },
-    {
-      "id": "not_1003",
-      "kind": "whatsapp_admin",
-      "channel": "whatsapp_admin",
-      "title": "WhatsApp Admin: BR-1003",
-      "message": "Configura WHATSAPP_ADMIN_WEBHOOK_URL para enviar WhatsApp automático al admin.",
-      "appointmentId": "apt_1003",
-      "status": "setup_required",
-      "unread": true,
-      "actionLabel": "Enviar WhatsApp",
-      "actionUrl": "https://api.whatsapp.com/send/?phone=5213326553522&text=Nueva%20cita%20BR-1003%20en%20Black%20Rococo%0AClienta%3A%20Final%0AWhatsApp%3A%203300009999%0AServicio%3A%20Manicure%20ruso%0AFecha%3A%202026-09-10%0AHora%3A%2011%3A00%0ATotal%3A%20%24350",
-      "createdAt": "2026-07-12T06:10:55.751Z",
-      "updatedAt": "2026-07-12T06:10:55.751Z"
-    }
-  ],
-  "promotions": [],
-  "courses": [],
-  "courseRegistrations": [],
-  "media": []
+  "notifications": []
 }

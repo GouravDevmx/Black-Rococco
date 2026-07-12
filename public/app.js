@@ -32,7 +32,17 @@ const state = {
     loadingSlots: false,
     slots: [],
     error: '',
-    success: null
+    success: null,
+    rebook: {
+      whatsapp: '',
+      checking: false,
+      checked: false,
+      found: false,
+      name: '',
+      service: null,
+      preferences: null,
+      error: ''
+    }
   },
   admin: {
     loggedIn: false,
@@ -230,6 +240,49 @@ async function loadAvailability() {
   }
 }
 
+async function lookupRebook() {
+  const rb = state.booking.rebook;
+  if (!rb.whatsapp || rb.whatsapp.length < 8) {
+    rb.error = 'Escribe un WhatsApp válido.';
+    return render();
+  }
+  rb.checking = true;
+  rb.error = '';
+  render();
+  try {
+    const data = await api(`/api/rebook?whatsapp=${encodeURIComponent(rb.whatsapp)}`);
+    rb.checked = true;
+    rb.found = Boolean(data.found);
+    rb.name = data.name || '';
+    rb.service = data.service || null;
+    rb.preferences = data.preferences || null;
+  } catch (err) {
+    rb.error = err.message;
+  }
+  rb.checking = false;
+  render();
+}
+
+async function applyRebook() {
+  const rb = state.booking.rebook;
+  if (!rb.found || !rb.service || !rb.service.active) return;
+  state.booking.serviceId = rb.service.id;
+  state.booking.whatsapp = rb.whatsapp;
+  state.booking.name = rb.name || '';
+  if (rb.preferences) {
+    state.booking.styleChoice = rb.preferences.styleChoice || '';
+    state.booking.colorChoice = rb.preferences.colorChoice || '';
+    state.booking.drinkChoice = rb.preferences.drinkChoice || '';
+    state.booking.timePreference = rb.preferences.timePreference || '';
+    state.booking.allergies = rb.preferences.allergies || '';
+    state.booking.notes = rb.preferences.notes || '';
+  }
+  state.booking.step = 2;
+  state.booking.time = null;
+  await loadAvailability();
+  render();
+}
+
 async function createBooking() {
   state.booking.error = '';
   render();
@@ -265,7 +318,13 @@ async function adminLogin() {
 }
 
 async function adminLogout() {
-  await api('/api/admin/logout', { method: 'POST' });
+  try {
+    await api('/api/admin/logout', { method: 'POST' });
+  } catch (_) {
+    // Best-effort: log the admin out locally regardless of whether the
+    // server call succeeded, so a network hiccup never traps someone
+    // in a stuck "logged in" state they can't get out of.
+  }
   state.admin.loggedIn = false;
   state.admin.data = null;
   render();
@@ -278,20 +337,32 @@ async function loadAdminDashboard() {
 async function cycleStatus(id, current) {
   const order = ['new', 'confirmed', 'in_progress', 'completed'];
   const next = order[(order.indexOf(current) + 1) % order.length] || 'new';
-  await api(`/api/admin/appointments/${id}/status`, { method: 'PATCH', body: { status: next } });
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/appointments/${id}/status`, { method: 'PATCH', body: { status: next } });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
 async function markNotificationRead(id) {
-  await api(`/api/admin/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
 async function markAllNotificationsRead() {
-  await api('/api/admin/notifications/read-all', { method: 'POST' });
-  await loadAdminDashboard();
+  try {
+    await api('/api/admin/notifications/read-all', { method: 'POST' });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
@@ -310,11 +381,13 @@ async function updateClientProfile(form) {
 }
 
 async function updateService(id, patch) {
-  await api(`/api/admin/services/${id}`, { method: 'PATCH', body: patch });
-  const cfg = await api('/api/config');
-  state.services = cfg.services;
-  state.groupedServices = cfg.groupedServices;
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/services/${id}`, { method: 'PATCH', body: patch });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
@@ -432,17 +505,25 @@ async function createOrUpdatePromotion(form) {
 }
 
 async function togglePromotion(id, current) {
-  await api(`/api/admin/promotions/${encodeURIComponent(id)}`, { method: 'PATCH', body: { active: current !== '1' } });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/promotions/${encodeURIComponent(id)}`, { method: 'PATCH', body: { active: current !== '1' } });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
 async function deletePromotion(id) {
   if (!confirm('¿Eliminar esta promoción?')) return;
-  await api(`/api/admin/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
@@ -500,17 +581,25 @@ async function createOrUpdateCourse(form) {
 }
 
 async function toggleCourse(id, current) {
-  await api(`/api/admin/courses/${encodeURIComponent(id)}`, { method: 'PATCH', body: { active: current !== '1' } });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/courses/${encodeURIComponent(id)}`, { method: 'PATCH', body: { active: current !== '1' } });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
 async function deleteCourse(id) {
   if (!confirm('¿Eliminar este curso? También se perderán sus inscripciones.')) return;
-  await api(`/api/admin/courses/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/courses/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
@@ -547,17 +636,25 @@ async function createOrUpdateService(form) {
 }
 
 async function toggleFeaturedService(id, current) {
-  await api(`/api/admin/services/${encodeURIComponent(id)}`, { method: 'PATCH', body: { featured: current !== '1' } });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/services/${encodeURIComponent(id)}`, { method: 'PATCH', body: { featured: current !== '1' } });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
 async function deleteServiceEntry(id) {
   if (!confirm('¿Eliminar este servicio? Ya no aparecerá en el sitio.')) return;
-  await api(`/api/admin/services/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/services/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
@@ -617,23 +714,35 @@ async function createOrUpdateMedia(form) {
 }
 
 async function toggleMediaFlag(id, field, value) {
-  await api(`/api/admin/media/${encodeURIComponent(id)}`, { method: 'PATCH', body: { [field]: value } });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/media/${encodeURIComponent(id)}`, { method: 'PATCH', body: { [field]: value } });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
 async function deleteMediaEntry(id) {
   if (!confirm('¿Eliminar este elemento de la galería?')) return;
-  await api(`/api/admin/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  await refreshPublicConfig();
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
 async function updateCourseRegistrationStatus(id, status) {
-  await api(`/api/admin/course-registrations/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status } });
-  await loadAdminDashboard();
+  try {
+    await api(`/api/admin/course-registrations/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status } });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
   render();
 }
 
@@ -900,7 +1009,25 @@ function bookingScreen() {
 
 function bookingStepService() {
   const groups = Object.entries(state.groupedServices || {});
+  const rb = state.booking.rebook;
   return `<div class="booking-step">
+    <div class="card" style="margin-bottom:16px">
+      <div class="eyebrow">¿YA NOS VISITASTE?</div>
+      <div class="subtitle" style="margin:6px 0 10px">Ingresa tu WhatsApp y reserva de nuevo en un paso.</div>
+      <div class="form-grid two-col">
+        <input value="${esc(rb.whatsapp)}" data-rebook-whatsapp inputmode="tel" placeholder="33 0000 0000">
+        <button class="btn btn-outline btn-small" data-rebook-lookup ${rb.checking ? 'disabled' : ''}>${rb.checking ? 'BUSCANDO…' : 'BUSCAR'}</button>
+      </div>
+      ${rb.error ? `<div class="error-box">${esc(rb.error)}</div>` : ''}
+      ${rb.checked && !rb.found ? `<div class="service-meta" style="margin-top:8px">No encontramos citas anteriores con ese WhatsApp.</div>` : ''}
+      ${rb.found && rb.service?.active ? `
+        <div class="card" style="margin-top:12px;background:var(--surface)">
+          <div class="service-name">¡Hola de nuevo${rb.name ? ', ' + esc(rb.name) : ''}!</div>
+          <div class="service-meta">Tu última cita fue: ${esc(rb.service.name)} · ${money(rb.service.price)}</div>
+          <button class="btn btn-primary btn-small" style="margin-top:10px" data-rebook-apply>RESERVAR IGUAL OTRA VEZ</button>
+        </div>` : ''}
+      ${rb.found && rb.service && !rb.service.active ? `<div class="service-meta" style="margin-top:8px">Ese servicio ya no está disponible — elige uno nuevo abajo.</div>` : ''}
+    </div>
     <div class="section-head"><div><div class="title">1. Servicio</div><div class="subtitle">¿Qué te quieres hacer?</div></div></div>
     ${groups.map(([cat, list]) => `<div class="category-title">${esc(cat)}</div><div class="card-list">${list.map(s => `<button class="card service-card selectable ${state.booking.serviceId === s.id ? 'active' : ''}" data-select-service="${esc(s.id)}"><span><span class="service-name">${esc(s.name)}</span><span class="service-meta">${esc(s.dur)} min · ${esc(s.desc)}</span></span><span class="price">$ ${esc(s.price)}</span></button>`).join('')}</div>`).join('')}
   </div>`;
@@ -1570,8 +1697,13 @@ async function loadGoogleCalendarStatus() {
 
 async function disconnectGoogleCalendar() {
   if (!confirm('¿Desconectar Google Calendar? Las citas ya no se bloquearán automáticamente.')) return;
-  await api('/api/admin/google-calendar/disconnect', { method: 'POST' });
-  await loadGoogleCalendarStatus();
+  try {
+    await api('/api/admin/google-calendar/disconnect', { method: 'POST' });
+    await loadGoogleCalendarStatus();
+  } catch (err) {
+    state.admin.error = err.message;
+    render();
+  }
 }
 
 function render() {
@@ -1682,6 +1814,8 @@ app.addEventListener('click', async event => {
   if (target.dataset.action === 'admin') return goAdmin();
   if (target.dataset.tab) return goClient(target.dataset.tab);
   if (target.dataset.book) return startBooking(target.dataset.book);
+  if (target.hasAttribute('data-rebook-lookup')) return lookupRebook();
+  if (target.hasAttribute('data-rebook-apply')) return applyRebook();
   if (target.dataset.selectService) {
     state.booking.serviceId = target.dataset.selectService;
     state.booking.step = 2;
@@ -1707,7 +1841,7 @@ app.addEventListener('click', async event => {
   }
   if (target.hasAttribute('data-confirm-booking')) return createBooking();
   if (target.hasAttribute('data-reset-booking')) {
-    state.booking = { step: 1, serviceId: null, date: todayLocal(), time: null, name: '', whatsapp: '', styleChoice: '', colorChoice: '', drinkChoice: '', timePreference: '', allergies: '', notes: '', promoCode: '', loadingSlots: false, slots: [], error: '', success: null };
+    state.booking = { step: 1, serviceId: null, date: todayLocal(), time: null, name: '', whatsapp: '', styleChoice: '', colorChoice: '', drinkChoice: '', timePreference: '', allergies: '', notes: '', promoCode: '', loadingSlots: false, slots: [], error: '', success: null, rebook: { whatsapp: '', checking: false, checked: false, found: false, name: '', service: null, preferences: null, error: '' } };
     return render();
   }
   if (target.hasAttribute('data-admin-login')) return adminLogin();
@@ -1824,6 +1958,7 @@ app.addEventListener('input', event => {
   if (el.dataset.field) state.booking[el.dataset.field] = el.value;
   if (el.dataset.adminField) state.admin[el.dataset.adminField] = el.value;
   if (el.dataset.academiaField) state.academia[el.dataset.academiaField] = el.value;
+  if (el.hasAttribute('data-rebook-whatsapp')) state.booking.rebook.whatsapp = el.value;
 });
 
 
