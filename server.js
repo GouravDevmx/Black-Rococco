@@ -52,6 +52,7 @@ const notificationsDomain = require('./lib/domains/notifications');
 const adminDashboard = require('./lib/domains/admin-dashboard');
 const adminUploads = require('./lib/domains/admin-uploads');
 const googleCalendarDomain = require('./lib/domains/google-calendar');
+const adminSettings = require('./lib/domains/admin-settings');
 
 // Resolved once at boot (see startServer below), not per-request. null in
 // local JSON-file mode.
@@ -105,6 +106,7 @@ async function handleApi(req, res, pathname, url) {
       if (await mediaDomain.handleAdminRoutes(adminCtx)) return;
       if (await postsDomain.handleAdminRoutes(adminCtx)) return;
       if (await googleCalendarDomain.handleAdminRoutes(adminCtx)) return;
+      if (await adminSettings.handleAdminRoutes(adminCtx)) return;
     }
 
     return json(res, 404, { error: 'API route not found' });

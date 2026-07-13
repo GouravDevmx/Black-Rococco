@@ -32,6 +32,7 @@ create table salons (
   booking jsonb not null default '{}'::jsonb,
   featured_service_ids jsonb not null default '[]'::jsonb,
   google_calendar jsonb not null default '{}'::jsonb,
+  salon_config jsonb not null default '{}'::jsonb,
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -72,6 +73,7 @@ create table services (
   price integer not null default 0,
   duration_minutes integer not null default 30,
   image_url text not null default '',
+  image_urls jsonb not null default '[]'::jsonb,
   active boolean not null default true,
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),

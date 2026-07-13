@@ -4,6 +4,7 @@ const state = {
   mode: 'client',
   tab: 'inicio',
   config: null,
+  salonConfig: { colors: [], bebidas: [], estilos: [], serviceCategories: [], galleryCategories: [], heroImages: [] },
   services: [],
   groupedServices: {},
   promotions: [],
@@ -12,9 +13,11 @@ const state = {
   serviceModalId: null,
   lightbox: null,
   galleryFilter: '',
+  gallerySearch: '',
   galleryVisibleCount: 9,
   galleryFilteredCache: [],
   homeCarouselCache: [],
+  heroSlide: 0,
   booking: {
     step: 1,
     serviceId: null,
@@ -59,6 +62,9 @@ const state = {
     courseImageDraft: [],
     courseImageUploading: false,
     googleCalendar: null,
+    configDraft: null,
+    configSaving: false,
+    clientSearch: '',
     data: null,
     error: ''
   },
@@ -197,6 +203,7 @@ async function loadInitial() {
   setHashMode();
   const data = await api('/api/config');
   state.config = data.settings;
+  state.salonConfig = data.salonConfig || { colors: [], bebidas: [], estilos: [], serviceCategories: [], galleryCategories: [], heroImages: [] };
   state.services = data.services;
   state.groupedServices = data.groupedServices;
   state.promotions = data.promotions || [];
@@ -440,6 +447,7 @@ async function createPost(form) {
 async function refreshPublicConfig() {
   const cfg = await api('/api/config');
   state.config = cfg.settings;
+  state.salonConfig = cfg.salonConfig || state.salonConfig;
   state.services = cfg.services;
   state.groupedServices = cfg.groupedServices;
   state.promotions = cfg.promotions || [];
@@ -605,11 +613,18 @@ async function deleteCourse(id) {
 
 async function createOrUpdateService(form) {
   const editingId = form.dataset.serviceForm;
-  const file = form.querySelector('[name="imageFile"]')?.files?.[0];
   const fd = new FormData(form);
   try {
-    let imageUrl = fd.get('existingImageUrl') || '';
-    if (file) imageUrl = await uploadAdminImage(file);
+    const imageUrls = [];
+    for (let i = 0; i < 3; i++) {
+      const file = form.querySelector(`[name="imageFile${i}"]`)?.files?.[0];
+      const existing = fd.get(`existingImageUrl${i}`) || '';
+      if (file) {
+        imageUrls.push(await uploadAdminImage(file));
+      } else if (existing) {
+        imageUrls.push(existing);
+      }
+    }
     const body = {
       name: fd.get('name') || '',
       cat: fd.get('cat') || '',
@@ -617,7 +632,8 @@ async function createOrUpdateService(form) {
       desc: fd.get('desc') || '',
       price: Number(fd.get('price') || 0),
       sort: Number(fd.get('sort') || 0),
-      imageUrl,
+      imageUrls,
+      imageUrl: imageUrls[0] || '',
       active: fd.get('active') === 'on',
       featured: fd.get('featured') === 'on'
     };
@@ -904,8 +920,12 @@ function serviceDetailModal() {
 
 function serviceButton(s, detailed = false) {
   if (detailed) {
+    const imgs = (s.imageUrls && s.imageUrls.length) ? s.imageUrls : (s.imageUrl ? [s.imageUrl] : []);
     return `<div class="card service-detail" data-view-service="${esc(s.id)}">
-      ${s.imageUrl ? `<div class="service-thumb"><img src="${esc(s.imageUrl)}" alt="${esc(s.name)}" loading="lazy"></div>` : ''}
+      ${imgs.length ? `<div class="service-thumb service-thumb-multi">
+        ${imgs.map((url, i) => `<img src="${esc(url)}" alt="${esc(s.name)}" loading="lazy" class="svc-img ${i === 0 ? 'active' : ''}" data-svc-img-idx="${i}">`).join('')}
+        ${imgs.length > 1 ? `<div class="svc-img-dots">${imgs.map((_,i)=>`<span class="${i===0?'active':''}"></span>`).join('')}</div>` : ''}
+      </div>` : ''}
       <div class="top">
         <div>
           <div class="service-name">${esc(s.name)}</div>
@@ -927,16 +947,27 @@ function serviceButton(s, detailed = false) {
 
 function homeScreen() {
   const c = state.config;
-  const openSlots = Math.max(0, (state.booking.slots.length ? state.booking.slots : c.booking.times.map(t => ({ busy: false }))).filter(s => !s.busy).length);
+  const openSlots = Math.max(0, (state.booking.slots.length ? state.booking.slots : (c.booking.times||[]).map(() => ({ busy: false }))).filter(s => !s.busy).length);
   const carouselMedia = (state.media?.carousel || []).slice(0, 10);
+  const heroImages = (state.salonConfig?.heroImages || []).filter(h => h.url);
+  const heroSlide = Math.min(state.heroSlide || 0, Math.max(0, heroImages.length - 1));
+  const heroItem = heroImages[heroSlide] || null;
   state.homeCarouselCache = carouselMedia;
   return `<section class="screen">
     ${brandHeader()}
-    <div class="hero">
-      <div class="hero-art">Foto principal<br>agrega imagen real en producción</div>
+    <div class="hero ${heroImages.length ? 'hero-has-image' : ''}">
+      ${heroImages.length
+        ? `<div class="hero-img-wrap">
+            <img class="hero-img" src="${esc(heroItem.url)}" alt="${esc(heroItem.title||'')}" loading="eager">
+            <div class="hero-img-overlay"></div>
+          </div>
+          ${heroImages.length > 1
+            ? `<div class="hero-nav">${heroImages.map((_,i) => `<button class="hero-dot ${i===heroSlide?'active':''}" data-hero-slide="${i}"></button>`).join('')}</div>`
+            : ''}`
+        : `<div class="hero-art"><div class="hero-art-inner">✦</div></div>`}
       <div class="hero-overlay">
-        <div class="hero-title">${esc(c.brand.heroTitle)}</div>
-        <div class="hero-subtitle">${esc(c.brand.heroSubtitle)}</div>
+        <div class="hero-title">${esc(heroItem?.title || c.brand.heroTitle)}</div>
+        <div class="hero-subtitle">${esc(heroItem?.subtitle || c.brand.heroSubtitle)}</div>
       </div>
     </div>
     <div class="section-tight cta-row">
@@ -1053,6 +1084,8 @@ function bookingStepConfirm() {
   const b = state.booking;
   const svc = serviceById(b.serviceId);
   const discount = svc ? discountedPriceFor(svc) : null;
+  const cfg = state.salonConfig || {};
+  const dl = (id, list) => list?.length ? `<datalist id="${id}">${list.map(v => `<option value="${esc(v)}">`).join('')}</datalist>` : '';
   return `<div class="booking-step">
     <div class="section-head"><div><div class="title">3. Confirmar</div><div class="subtitle">Revisa tus datos antes de apartar tu lugar.</div></div><button class="pill-button" data-step="2">CAMBIAR</button></div>
     <div class="card info-grid" style="margin-bottom:16px">
@@ -1069,11 +1102,14 @@ function bookingStepConfirm() {
     <div class="form-field"><label>¿Tienes un código de promoción?</label><input value="${esc(b.promoCode)}" data-field="promoCode" placeholder="Opcional, ej. VERANO15" style="text-transform:uppercase"></div>
     <div class="card preference-card">
       <div class="section-head compact-head"><div><div class="title">Perfil de clienta</div><div class="subtitle">Opcional: esto ayuda al salón a recordar tus gustos para próximas visitas.</div></div></div>
+      ${dl('dl-estilos', cfg.estilos)}
+      ${dl('dl-colors', cfg.colors)}
+      ${dl('dl-bebidas', cfg.bebidas)}
       <div class="form-grid two-col">
-        <div class="form-field"><label>Estilo preferido</label><input value="${esc(b.styleChoice)}" data-field="styleChoice" placeholder="Natural, elegante, french, largo, corto..."></div>
-        <div class="form-field"><label>Color favorito</label><input value="${esc(b.colorChoice)}" data-field="colorChoice" placeholder="Nude, rojo, negro, rosa..."></div>
-        <div class="form-field"><label>Bebida preferida</label><input value="${esc(b.drinkChoice)}" data-field="drinkChoice" placeholder="Café, té, agua mineral..."></div>
-        <div class="form-field"><label>Horario preferido</label><input value="${esc(b.timePreference)}" data-field="timePreference" placeholder="Mañana, después de comer, sábado..."></div>
+        <div class="form-field"><label>Estilo preferido</label><input value="${esc(b.styleChoice)}" data-field="styleChoice" list="dl-estilos" placeholder="${esc((cfg.estilos||['Natural, french, editorial...']).join(', '))}"></div>
+        <div class="form-field"><label>Color favorito</label><input value="${esc(b.colorChoice)}" data-field="colorChoice" list="dl-colors" placeholder="${esc((cfg.colors||['Nude, rojo, negro...']).join(', '))}"></div>
+        <div class="form-field"><label>Bebida preferida</label><input value="${esc(b.drinkChoice)}" data-field="drinkChoice" list="dl-bebidas" placeholder="${esc((cfg.bebidas||['Café, té, agua...']).join(', '))}"></div>
+        <div class="form-field"><label>Horario preferido</label><input value="${esc(b.timePreference)}" data-field="timePreference" placeholder="Mañana, tarde, sábado..."></div>
       </div>
       <div class="form-field"><label>Alergias o cuidados</label><input value="${esc(b.allergies)}" data-field="allergies" placeholder="Ej. piel sensible, alergia a algún producto"></div>
       <div class="form-field"><label>Nota para tu cita</label><textarea data-field="notes" rows="3" placeholder="Idea de diseño, ocasión especial, referencia, etc.">${esc(b.notes)}</textarea></div>
@@ -1109,21 +1145,31 @@ function bookingSuccess() {
 
 function galleryScreen() {
   const all = state.media?.gallery || [];
-  const categories = state.media?.categories || [];
+  // Merge categories from uploaded media + those configured in admin
+  const mediaCats = state.media?.categories || [];
+  const configCats = state.salonConfig?.galleryCategories || [];
+  const categories = [...new Set([...mediaCats, ...configCats])].filter(Boolean);
   const filter = state.galleryFilter || '';
-  const filtered = filter ? all.filter(m => m.category === filter) : all;
+  const search = (state.gallerySearch || '').toLowerCase();
+  const filtered = all.filter(m =>
+    (!filter || m.category === filter) &&
+    (!search || (m.title||'').toLowerCase().includes(search))
+  );
   state.galleryFilteredCache = filtered;
   const visibleCount = state.galleryVisibleCount || 9;
   const visible = filtered.slice(0, visibleCount);
   return `<section class="screen">
     ${brandHeader()}
     <div class="page-header"><div class="title">Galería</div><div class="subtitle">Resultados reales de nuestras clientas.</div></div>
+    <div style="padding:0 16px 8px">
+      <input placeholder="Buscar por nombre..." data-gallery-search value="${esc(state.gallerySearch||'')}" style="width:100%;box-sizing:border-box">
+    </div>
     ${categories.length ? `<div class="pill-row" style="padding:0 16px 10px;flex-wrap:wrap">
       <button class="pill-button ${!filter ? 'active' : ''}" data-gallery-filter="">TODAS</button>
       ${categories.map(cat => `<button class="pill-button ${filter === cat ? 'active' : ''}" data-gallery-filter="${esc(cat)}">${esc(cat)}</button>`).join('')}
     </div>` : ''}
     <div class="masonry-grid">
-      ${visible.length ? visible.map((m, i) => masonryItem(m, i)).join('') : `<div class="empty">Aún no hay fotos ${filter ? 'en esta categoría' : 'en la galería'}.</div>`}
+      ${visible.length ? visible.map((m, i) => masonryItem(m, i)).join('') : `<div class="empty">Aún no hay fotos ${filter || search ? 'que coincidan con tu búsqueda' : 'en la galería'}.</div>`}
     </div>
     ${visible.length < filtered.length ? `<div class="section" style="text-align:center"><button class="btn btn-outline" data-load-more-gallery>CARGAR MÁS</button></div>` : ''}
     <div class="section"><a class="btn btn-outline" target="_blank" rel="noopener" href="${esc(state.config.contact.instagramUrl)}">VER ${esc(state.config.contact.instagramHandle)} EN INSTAGRAM</a></div>
@@ -1240,7 +1286,7 @@ function adminScreen() {
       <div class="card"><div class="eyebrow">NOTIFICACIONES</div><div class="stat-number">${esc(data?.unreadNotifications || 0)}</div></div>
     </div>
     <div class="pill-row admin-tabs">
-      ${[['agenda','AGENDA'],['notificaciones',`NOTIFICACIONES${data?.unreadNotifications ? ` (${data.unreadNotifications})` : ''}`],['servicios','SERVICIOS'],['promociones','PROMOCIONES'],['clientas','CLIENTAS'],['academia','ACADEMIA'],['galeria','GALERÍA'],['publicar','PUBLICAR'],['integraciones','INTEGRACIONES']].map(([id,label]) => `<button class="pill-button ${state.admin.tab === id ? 'active' : ''}" data-admin-tab="${id}">${label}</button>`).join('')}
+      ${[['agenda','AGENDA'],['notificaciones',`NOTIFICACIONES${data?.unreadNotifications ? ` (${data.unreadNotifications})` : ''}`],['servicios','SERVICIOS'],['promociones','PROMOCIONES'],['clientas','CLIENTAS'],['academia','ACADEMIA'],['galeria','GALERÍA'],['publicar','PUBLICAR'],['integraciones','INTEGRACIONES'],['configuracion','CONFIGURACIÓN']].map(([id,label]) => `<button class="pill-button ${state.admin.tab === id ? 'active' : ''}" data-admin-tab="${id}">${label}</button>`).join('')}
     </div>
     ${state.admin.error ? `<div class="error-box">${esc(state.admin.error)}</div>` : ''}
     ${state.admin.tab === 'agenda' ? adminAgenda(data) : ''}
@@ -1252,6 +1298,7 @@ function adminScreen() {
     ${state.admin.tab === 'galeria' ? adminGallery(data) : ''}
     ${state.admin.tab === 'publicar' ? adminPublish(data) : ''}
     ${state.admin.tab === 'integraciones' ? adminIntegrations() : ''}
+    ${state.admin.tab === 'configuracion' ? adminConfiguracion(data) : ''}
   </section>`;
 }
 
@@ -1310,16 +1357,32 @@ function adminNotifications(data) {
         <div><b>Recordatorios clienta</b><span>${i.clientReminderConfigured ? `Activo ${esc((i.reminderHours || []).join(', '))} h antes` : 'Pendiente: CLIENT_REMINDER_WEBHOOK_URL'}</span></div>
       </div>
     </div>
-    ${list.length ? list.map(n => `<div class="notification-row ${n.unread ? 'unread' : ''}">
-      <div class="notification-top"><div class="service-name">${esc(n.title)}</div><span class="notify-status ${esc(n.status)}">${esc(notificationStatusLabel(n.status))}</span></div>
-      <div class="service-meta">${esc(n.message)}</div>
-      <div class="service-meta">${esc(n.channel)} · ${new Date(n.createdAt).toLocaleString('es-MX')}</div>
-      <div class="row-actions">
-        ${n.actionUrl ? `<a class="mini-action" target="_blank" rel="noopener" href="${esc(n.actionUrl)}">${esc(n.actionLabel || 'Abrir')}</a>` : ''}
-        ${n.unread ? `<button class="mini-action" data-mark-notification="${esc(n.id)}">Marcar leída</button>` : ''}
-      </div>
-      ${n.error ? `<div class="error-box">${esc(n.error)}</div>` : ''}
-    </div>`).join('') : `<div class="empty">No hay notificaciones todavía.</div>`}
+    ${list.length ? list.map(n => {
+      let actions = '';
+      if (n.actionLabel === 'multi' && n.actionUrl) {
+        try {
+          const multi = JSON.parse(n.actionUrl);
+          if (multi.whatsapp?.url) actions += `<a class="mini-action" target="_blank" rel="noopener" href="${esc(multi.whatsapp.url)}">${esc(multi.whatsapp.label)}</a>`;
+          if (multi.calendar?.url) actions += `<a class="mini-action" target="_blank" rel="noopener" href="${esc(multi.calendar.url)}">${esc(multi.calendar.label)}</a>`;
+          if (multi.agenda) actions += `<button class="mini-action" data-admin-tab="agenda">Ver agenda</button>`;
+          if (multi.calendar?.message) actions += `<div class="service-meta" style="margin-top:4px">${esc(multi.calendar.message)}</div>`;
+        } catch (_) {
+          actions = n.actionUrl ? `<a class="mini-action" target="_blank" rel="noopener" href="${esc(n.actionUrl)}">${esc(n.actionLabel)}</a>` : '';
+        }
+      } else if (n.actionUrl) {
+        actions = `<a class="mini-action" target="_blank" rel="noopener" href="${esc(n.actionUrl)}">${esc(n.actionLabel || 'Abrir')}</a>`;
+      }
+      return `<div class="notification-row ${n.unread ? 'unread' : ''}">
+        <div class="notification-top"><div class="service-name">${esc(n.title)}</div><span class="notify-status ${esc(n.status)}">${esc(notificationStatusLabel(n.status))}</span></div>
+        <div class="service-meta">${esc(n.message)}</div>
+        <div class="service-meta" style="opacity:0.6">${new Date(n.createdAt).toLocaleString('es-MX')}</div>
+        <div class="row-actions">
+          ${actions}
+          ${n.unread ? `<button class="mini-action" data-mark-notification="${esc(n.id)}">Marcar leída</button>` : ''}
+        </div>
+        ${n.error ? `<div class="error-box">${esc(n.error)}</div>` : ''}
+      </div>`;
+    }).join('') : `<div class="empty">No hay notificaciones todavía.</div>`}
   </div>`;
 }
 
@@ -1335,7 +1398,7 @@ function adminServices(data) {
       <div class="form-field"><label>Nombre</label><input name="name" value="${esc(editing?.name || '')}" placeholder="Ej. Baño de acrílico"></div>
       <div class="form-grid two-col">
         <div class="form-field"><label>Categoría</label><input name="cat" list="service-categories" value="${esc(editing?.cat || '')}" placeholder="MANOS, PIES, EXTRAS..."></div>
-        <datalist id="service-categories">${categories.map(cat => `<option value="${esc(cat)}">`).join('')}</datalist>
+        <datalist id="service-categories">${[...new Set([...categories,...(state.salonConfig?.serviceCategories||[]).map(c=>c.toUpperCase())])].map(cat => `<option value="${esc(cat)}">`).join('')}</datalist>
         <div class="form-field"><label>Duración (min)</label><input type="number" min="5" name="dur" value="${esc(editing?.dur ?? 60)}"></div>
       </div>
       <div class="form-field"><label>Descripción</label><textarea name="desc" rows="2" placeholder="Descripción breve para clientas...">${esc(editing?.desc || '')}</textarea></div>
@@ -1343,9 +1406,16 @@ function adminServices(data) {
         <div class="form-field"><label>Precio</label><input type="number" min="0" name="price" value="${esc(editing?.price ?? 0)}"></div>
         <div class="form-field"><label>Orden (menor = primero)</label><input type="number" name="sort" value="${esc(editing?.sort ?? 0)}"></div>
       </div>
-      <div class="form-field"><label>Foto del servicio (opcional)</label><input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></div>
-      ${editing?.imageUrl ? `<img src="${esc(editing.imageUrl)}" alt="" class="admin-thumb" style="margin-bottom:10px">` : ''}
-      <input type="hidden" name="existingImageUrl" value="${esc(editing?.imageUrl || '')}">
+      <div class="form-field"><label>Fotos del servicio (hasta 3 — aparecen en carrusel)</label>
+        ${[0,1,2].map(i => {
+          const existingUrl = (editing?.imageUrls||[])[i] || (i===0 ? editing?.imageUrl||'' : '');
+          return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            ${existingUrl ? `<img src="${esc(existingUrl)}" style="width:48px;height:48px;object-fit:cover;border-radius:4px;flex-shrink:0">` : '<div style="width:48px;height:48px;background:var(--surface);border-radius:4px;flex-shrink:0"></div>'}
+            <input name="imageFile${i}" type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="flex:1">
+            <input type="hidden" name="existingImageUrl${i}" value="${esc(existingUrl)}">
+          </div>`;
+        }).join('')}
+      </div>
       <label class="pill-button" style="margin-bottom:8px"><input type="checkbox" name="active" ${(!editing || editing.active) ? 'checked' : ''}> Activo (visible en el sitio)</label>
       <label class="pill-button" style="margin-bottom:12px"><input type="checkbox" name="featured" ${editing && featuredIds.includes(editing.id) ? 'checked' : ''}> Destacado (aparece en el carrusel de inicio)</label>
       <div class="row-actions">
@@ -1498,13 +1568,20 @@ function adminAcademia(data) {
 }
 
 function adminClients(data) {
-  const clients = data?.clients || [];
+  const allClients = data?.clients || [];
   const selected = state.admin.selectedClientId ? clientById(state.admin.selectedClientId) : null;
   if (selected) return adminClientProfile(selected);
+  const search = (state.admin.clientSearch || '').toLowerCase();
+  const clients = search ? allClients.filter(c =>
+    c.name.toLowerCase().includes(search) ||
+    c.whatsapp.includes(search) ||
+    (c.favoriteService || '').toLowerCase().includes(search)
+  ) : allClients;
   return `<div class="card-list clients-crm-list">
     <div class="card crm-intro">
-      <div class="title">CRM de clientas</div>
+      <div class="title">CRM de clientas (${allClients.length})</div>
       <div class="subtitle">Historial, próxima cita, servicios anteriores y preferencias para dar atención personalizada.</div>
+      <div class="form-field" style="margin-top:10px"><input placeholder="Buscar por nombre, WhatsApp o servicio..." data-admin-clients-search value="${esc(state.admin.clientSearch||'')}"></div>
     </div>
     ${clients.length ? clients.map(c => `<div class="client-row client-card">
       <div class="client-card-head">
@@ -1517,7 +1594,7 @@ function adminClients(data) {
         <span>Gastado completado: ${money(c.totalSpent || 0)}</span>
       </div>
       <div class="service-meta">${esc(profileSummary(c))}</div>
-    </div>`).join('') : `<div class="empty">Aún no hay clientas.</div>`}
+    </div>`).join('') : `<div class="empty">${search ? `No se encontraron clientas con "${esc(search)}"` : 'Aún no hay clientas.'}</div>`}
   </div>`;
 }
 
@@ -1605,7 +1682,12 @@ function adminGallery(data) {
       <div class="form-field"><label>Título / caption</label><input name="title" value="${esc(editing?.title || '')}" placeholder="Set editorial en poligel"></div>
       <div class="form-field"><label>Descripción breve</label><textarea name="description" rows="2" placeholder="Manicure ruso con nail art en tono nude...">${esc(editing?.description || '')}</textarea></div>
       <div class="form-grid two-col">
-        <div class="form-field"><label>Categoría</label><input name="category" list="media-categories" value="${esc(editing?.category || '')}" placeholder="Manicure Ruso, Poligel, Pedicure..."></div>
+        <div class="form-field"><label>Categoría</label>
+          <input name="category" list="media-categories" value="${esc(editing?.category || '')}" placeholder="Manicure Ruso, Poligel, Pedicure...">
+          <datalist id="media-categories">
+            ${[...(state.salonConfig?.galleryCategories || []), ...(data?.media?.map(m=>m.category).filter(Boolean)||[])].filter((v,i,a)=>a.indexOf(v)===i).map(c=>`<option value="${esc(c)}">`).join('')}
+          </datalist>
+        </div>
         <datalist id="media-categories">${categories.map(cat => `<option value="${esc(cat)}">`).join('')}</datalist>
         <div class="form-field"><label>Orden (menor = primero)</label><input type="number" name="order" value="${esc(editing?.order ?? 0)}"></div>
       </div>
@@ -1704,6 +1786,163 @@ async function disconnectGoogleCalendar() {
     state.admin.error = err.message;
     render();
   }
+}
+
+async function disconnectGoogleCalendar() {
+  if (!confirm('¿Desconectar Google Calendar? Las citas ya no se bloquearán automáticamente.')) return;
+  try {
+    await api('/api/admin/google-calendar/disconnect', { method: 'POST' });
+    await loadGoogleCalendarStatus();
+  } catch (err) {
+    state.admin.error = err.message;
+    render();
+  }
+}
+
+function adminConfiguracion(data) {
+  const cfg = state.admin.configDraft || state.salonConfig || {};
+  const brand = state.config?.brand || {};
+  const contact = state.config?.contact || {};
+  const booking = state.config?.booking || {};
+  const saving = state.admin.configSaving;
+
+  const listField = (label, key, hint) => `
+    <div class="form-field">
+      <label>${label}</label>
+      <textarea name="cfg_${key}" rows="3" placeholder="${hint}">${esc((cfg[key] || []).join(', '))}</textarea>
+      <div class="field-hint">Separa con comas. Se usan como sugerencias al reservar y al crear servicios.</div>
+    </div>`;
+
+  return `<div class="card-list">
+    <div class="card">
+      <div class="eyebrow">MARCA</div>
+      <form data-settings-form="brand">
+        <div class="form-grid two-col">
+          <div class="form-field"><label>Nombre del salón</label><input name="name" value="${esc(brand.name||'')}"></div>
+          <div class="form-field"><label>Tagline</label><input name="tagline" value="${esc(brand.tagline||'')}"></div>
+          <div class="form-field"><label>Título del hero</label><input name="heroTitle" value="${esc(brand.heroTitle||'')}"></div>
+          <div class="form-field"><label>Subtítulo del hero</label><input name="heroSubtitle" value="${esc(brand.heroSubtitle||'')}"></div>
+          <div class="form-field"><label>Especialidades (separadas por ·)</label><input name="specialties" value="${esc(brand.specialties||'')}"></div>
+          <div class="form-field"><label>Rating (ej. 4.9)</label><input name="rating" value="${esc(brand.rating||'')}"></div>
+          <div class="form-field"><label>Texto de reseña</label><input name="socialProof" value="${esc(brand.socialProof||'')}"></div>
+          <div class="form-field"><label>Texto del footer</label><input name="footer" value="${esc(brand.footer||'')}"></div>
+        </div>
+        <button class="btn btn-primary" type="submit" ${saving?'disabled':''}>GUARDAR MARCA</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">CONTACTO</div>
+      <form data-settings-form="contact">
+        <div class="form-grid two-col">
+          <div class="form-field"><label>WhatsApp (número)</label><input name="whatsappNumber" value="${esc(contact.whatsappNumber||'')}"></div>
+          <div class="form-field"><label>Dirección línea 1</label><input name="address1" value="${esc(contact.address1||'')}"></div>
+          <div class="form-field"><label>Dirección línea 2</label><input name="address2" value="${esc(contact.address2||'')}"></div>
+          <div class="form-field"><label>Horario línea 1</label><input name="hours1" value="${esc(contact.hours1||'')}"></div>
+          <div class="form-field"><label>Horario línea 2</label><input name="hours2" value="${esc(contact.hours2||'')}"></div>
+          <div class="form-field"><label>URL Google Maps</label><input name="mapsUrl" value="${esc(contact.mapsUrl||'')}"></div>
+          <div class="form-field"><label>URL Instagram</label><input name="instagramUrl" value="${esc(contact.instagramUrl||'')}"></div>
+          <div class="form-field"><label>Handle Instagram (@usuario)</label><input name="instagramHandle" value="${esc(contact.instagramHandle||'')}"></div>
+          <div class="form-field"><label>URL TikTok</label><input name="tiktokUrl" value="${esc(contact.tiktokUrl||'')}"></div>
+        </div>
+        <button class="btn btn-primary" type="submit" ${saving?'disabled':''}>GUARDAR CONTACTO</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">HORARIOS DE CITAS</div>
+      <form data-settings-form="booking">
+        <div class="form-field">
+          <label>Horarios disponibles (HH:MM separados por comas)</label>
+          <input name="times" value="${esc((booking.times||[]).join(', '))}" placeholder="09:00, 10:00, 11:00...">
+        </div>
+        <div class="form-field"><label>Nota de confirmación</label><textarea name="confirmNote" rows="3">${esc(booking.confirmNote||'')}</textarea></div>
+        <button class="btn btn-primary" type="submit" ${saving?'disabled':''}>GUARDAR HORARIOS</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">LISTAS DE PREFERENCIAS</div>
+      <form data-settings-form="config">
+        <div class="form-field"><label>WhatsApp del negocio (número)</label><input name="cfg_whatsappNumber" value="${esc(cfg.whatsappNumber||'')}"></div>
+        ${listField('Colores disponibles','colors','Nude, Rojo, Negro, Rosa...')}
+        ${listField('Bebidas disponibles','bebidas','Café, Té, Agua, Jugo...')}
+        ${listField('Estilos disponibles','estilos','Natural, French, Editorial...')}
+        ${listField('Categorías de servicios','serviceCategories','MANOS, PIES, EXTRAS...')}
+        ${listField('Categorías de galería','galleryCategories','Manicure Ruso, Poligel, Pedicure...')}
+        <button class="btn btn-primary" type="submit" ${saving?'disabled':''}>GUARDAR LISTAS</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">FOTO PRINCIPAL (hasta 10 imágenes, carrusel automático)</div>
+      <div class="subtitle" style="margin-bottom:12px">Configura las fotos del hero de la página de inicio. Cada foto puede tener un título y subtítulo propios.</div>
+      ${(cfg.heroImages||[]).map((img, i) => `
+        <div class="card" style="margin-bottom:8px">
+          <div class="form-grid two-col">
+            <div class="form-field"><label>URL foto ${i+1}</label><input value="${esc(img.url)}" data-hero-img-url="${i}"></div>
+            <div><button class="pill-button" data-upload-hero-img="${i}" style="margin-top:20px">SUBIR FOTO</button><input type="file" accept="image/*" data-hero-img-file="${i}" style="display:none"></div>
+          </div>
+          <div class="form-grid two-col">
+            <div class="form-field"><label>Título</label><input value="${esc(img.title||'')}" data-hero-img-title="${i}"></div>
+            <div class="form-field"><label>Subtítulo</label><input value="${esc(img.subtitle||'')}" data-hero-img-subtitle="${i}"></div>
+          </div>
+          ${img.url ? `<img src="${esc(img.url)}" style="width:100%;height:100px;object-fit:cover;border-radius:4px;margin-top:4px">` : ''}
+          <button class="pill-button" data-remove-hero-img="${i}" style="margin-top:8px;color:var(--error,red)">ELIMINAR</button>
+        </div>`).join('')}
+      ${(cfg.heroImages||[]).length < 10
+        ? `<button class="btn btn-outline btn-small" data-add-hero-img>+ AGREGAR FOTO</button>`
+        : ''}
+      <button class="btn btn-primary" style="margin-top:12px" data-save-hero-images ${saving?'disabled':''}>GUARDAR FOTOS HERO</button>
+    </div>
+  </div>`;
+}
+
+async function saveSettings(section, formData) {
+  state.admin.configSaving = true;
+  state.admin.error = '';
+  render();
+  try {
+    let body = {};
+    if (section === 'brand' || section === 'contact' || section === 'booking') {
+      body = Object.fromEntries(formData.entries());
+      if (section === 'booking') {
+        body.times = String(body.times || '').split(',').map(t => t.trim()).filter(t => /^\d{2}:\d{2}$/.test(t));
+      }
+    } else if (section === 'config') {
+      const parseList = v => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+      body = {
+        whatsappNumber: formData.get('cfg_whatsappNumber') || '',
+        colors: parseList(formData.get('cfg_colors')),
+        bebidas: parseList(formData.get('cfg_bebidas')),
+        estilos: parseList(formData.get('cfg_estilos')),
+        serviceCategories: parseList(formData.get('cfg_serviceCategories')),
+        galleryCategories: parseList(formData.get('cfg_galleryCategories'))
+      };
+    }
+    await api(`/api/admin/settings/${section}`, { method: 'POST', body });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  state.admin.configSaving = false;
+  render();
+}
+
+async function saveHeroImages() {
+  const cfg = state.salonConfig || {};
+  state.admin.configSaving = true;
+  state.admin.error = '';
+  render();
+  try {
+    await api('/api/admin/settings/hero-images', { method: 'POST', body: { images: cfg.heroImages || [] } });
+    await refreshPublicConfig();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  state.admin.configSaving = false;
+  render();
 }
 
 function render() {
@@ -1814,6 +2053,10 @@ app.addEventListener('click', async event => {
   if (target.dataset.action === 'admin') return goAdmin();
   if (target.dataset.tab) return goClient(target.dataset.tab);
   if (target.dataset.book) return startBooking(target.dataset.book);
+  if (target.dataset.heroSlide !== undefined) {
+    state.heroSlide = Number(target.dataset.heroSlide);
+    return render();
+  }
   if (target.hasAttribute('data-rebook-lookup')) return lookupRebook();
   if (target.hasAttribute('data-rebook-apply')) return applyRebook();
   if (target.dataset.selectService) {
@@ -1847,12 +2090,34 @@ app.addEventListener('click', async event => {
   if (target.hasAttribute('data-admin-login')) return adminLogin();
   if (target.hasAttribute('data-logout')) return adminLogout();
   if (target.hasAttribute('data-gcal-disconnect')) return disconnectGoogleCalendar();
+
+  // Hero image controls
+  if (target.hasAttribute('data-add-hero-img')) {
+    if (!state.salonConfig) state.salonConfig = {};
+    state.salonConfig.heroImages = [...(state.salonConfig.heroImages || []), { url: '', title: '', subtitle: '' }];
+    return render();
+  }
+  if (target.dataset.removeHeroImg !== undefined) {
+    const idx = Number(target.dataset.removeHeroImg);
+    state.salonConfig.heroImages = (state.salonConfig.heroImages || []).filter((_, i) => i !== idx);
+    return render();
+  }
+  if (target.hasAttribute('data-save-hero-images')) return saveHeroImages();
+  if (target.dataset.uploadHeroImg !== undefined) {
+    const idx = Number(target.dataset.uploadHeroImg);
+    const fileInput = document.querySelector(`[data-hero-img-file="${idx}"]`);
+    if (fileInput) fileInput.click();
+    return;
+  }
   if (target.dataset.markNotification) return markNotificationRead(target.dataset.markNotification);
   if (target.hasAttribute('data-mark-all-notifications')) return markAllNotificationsRead();
   if (target.dataset.adminTab) {
     state.admin.tab = target.dataset.adminTab;
     if (state.admin.tab !== 'clientas') state.admin.selectedClientId = null;
     if (state.admin.tab === 'integraciones') loadGoogleCalendarStatus();
+    if (state.admin.tab === 'configuracion') {
+      state.admin.configDraft = JSON.parse(JSON.stringify(state.salonConfig || {}));
+    }
     return render();
   }
   if (target.dataset.clientProfile) {
@@ -1959,6 +2224,28 @@ app.addEventListener('input', event => {
   if (el.dataset.adminField) state.admin[el.dataset.adminField] = el.value;
   if (el.dataset.academiaField) state.academia[el.dataset.academiaField] = el.value;
   if (el.hasAttribute('data-rebook-whatsapp')) state.booking.rebook.whatsapp = el.value;
+  if (el.hasAttribute('data-admin-clients-search')) {
+    state.admin.clientSearch = el.value;
+    render();
+  }
+  if (el.hasAttribute('data-gallery-search')) {
+    state.gallerySearch = el.value;
+    state.galleryVisibleCount = 9;
+    render();
+  }
+  if (el.dataset.heroImgUrl !== undefined) {
+    const i = Number(el.dataset.heroImgUrl);
+    if (!state.salonConfig.heroImages) state.salonConfig.heroImages = [];
+    if (state.salonConfig.heroImages[i]) state.salonConfig.heroImages[i].url = el.value;
+  }
+  if (el.dataset.heroImgTitle !== undefined) {
+    const i = Number(el.dataset.heroImgTitle);
+    if (state.salonConfig.heroImages?.[i]) state.salonConfig.heroImages[i].title = el.value;
+  }
+  if (el.dataset.heroImgSubtitle !== undefined) {
+    const i = Number(el.dataset.heroImgSubtitle);
+    if (state.salonConfig.heroImages?.[i]) state.salonConfig.heroImages[i].subtitle = el.value;
+  }
 });
 
 
@@ -1975,6 +2262,20 @@ app.addEventListener('change', async event => {
   }
   if (el.matches('[data-media-file-input]')) {
     return handleMediaFileSelected(el);
+  }
+  if (el.dataset.heroImgFile !== undefined) {
+    const idx = Number(el.dataset.heroImgFile);
+    const file = el.files?.[0];
+    if (!file) return;
+    try {
+      const url = await uploadAdminImage(file);
+      if (!state.salonConfig.heroImages) state.salonConfig.heroImages = [];
+      if (state.salonConfig.heroImages[idx]) state.salonConfig.heroImages[idx].url = url;
+      render();
+    } catch (err) {
+      state.admin.error = err.message;
+      render();
+    }
   }
 });
 
@@ -2013,6 +2314,12 @@ app.addEventListener('submit', event => {
   if (mediaForm) {
     event.preventDefault();
     createOrUpdateMedia(mediaForm);
+    return;
+  }
+  const settingsForm = event.target.closest('[data-settings-form]');
+  if (settingsForm) {
+    event.preventDefault();
+    saveSettings(settingsForm.dataset.settingsForm, new FormData(settingsForm));
   }
 });
 
@@ -2039,3 +2346,40 @@ document.addEventListener('keydown', event => {
 loadInitial().catch(err => {
   app.innerHTML = `<div class="loading-card">Error: ${esc(err.message)}</div>`;
 });
+
+// Auto-advance hero carousel
+setInterval(() => {
+  const heroImages = (state.salonConfig?.heroImages || []).filter(h => h.url);
+  if (heroImages.length > 1 && state.mode === 'client' && state.tab === 'inicio') {
+    state.heroSlide = (state.heroSlide + 1) % heroImages.length;
+    render();
+  }
+}, 4000);
+
+// Cycle service card images on hover (live DOM, no re-render needed)
+document.addEventListener('mouseenter', event => {
+  const thumb = event.target.closest?.('.service-thumb-multi');
+  if (!thumb || thumb._cycling) return;
+  const imgs = [...thumb.querySelectorAll('.svc-img')];
+  const dots = [...thumb.querySelectorAll('.svc-img-dots span')];
+  if (imgs.length < 2) return;
+  let idx = 0;
+  thumb._cycling = setInterval(() => {
+    imgs[idx].classList.remove('active');
+    if (dots[idx]) dots[idx].classList.remove('active');
+    idx = (idx + 1) % imgs.length;
+    imgs[idx].classList.add('active');
+    if (dots[idx]) dots[idx].classList.add('active');
+  }, 1200);
+}, true);
+
+document.addEventListener('mouseleave', event => {
+  const thumb = event.target.closest?.('.service-thumb-multi');
+  if (!thumb || !thumb._cycling) return;
+  clearInterval(thumb._cycling);
+  thumb._cycling = null;
+  const imgs = [...thumb.querySelectorAll('.svc-img')];
+  const dots = [...thumb.querySelectorAll('.svc-img-dots span')];
+  imgs.forEach((img, i) => { img.classList.toggle('active', i === 0); });
+  dots.forEach((d, i) => { d.classList.toggle('active', i === 0); });
+}, true);

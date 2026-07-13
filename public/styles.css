@@ -1439,3 +1439,186 @@ img, video { max-width: 100%; height: auto; }
   font-size: 12px;
   opacity: .75;
 }
+
+/* ============================================================
+   LUXURY FRONTEND ENHANCEMENTS + NEW FEATURE STYLES
+   ============================================================ */
+
+/* --- Hero carousel with real images ----------------------- */
+.hero { position: relative; overflow: hidden; }
+.hero-has-image { min-height: 380px; }
+.hero-img-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity .5s ease;
+}
+.hero-img-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10,8,6,.15) 0%,
+    rgba(10,8,6,.55) 60%,
+    rgba(10,8,6,.78) 100%
+  );
+}
+.hero-has-image .hero-overlay {
+  position: relative;
+  z-index: 2;
+  padding: 28px 22px 32px;
+}
+.hero-has-image .hero-title {
+  font-size: clamp(28px, 7vw, 48px);
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,.35);
+}
+.hero-has-image .hero-subtitle {
+  color: rgba(255,255,255,.88);
+  text-shadow: 0 1px 6px rgba(0,0,0,.3);
+}
+.hero-nav {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  z-index: 3;
+}
+.hero-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,.4);
+  cursor: pointer;
+  padding: 0;
+  transition: background .25s;
+}
+.hero-dot.active { background: #fff; }
+
+/* Luxury hero art (when no image is set) */
+.hero-art {
+  background: linear-gradient(135deg, #1a0e0e 0%, #2d1515 40%, #1a1008 100%);
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero-art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 50%, rgba(176,141,87,.18) 0%, transparent 60%),
+    radial-gradient(ellipse at 75% 30%, rgba(176,141,87,.12) 0%, transparent 50%);
+}
+.hero-art-inner {
+  font-size: 64px;
+  color: rgba(176,141,87,.5);
+  font-weight: 300;
+  position: relative;
+  z-index: 1;
+  animation: heroGlow 3s ease-in-out infinite;
+}
+@keyframes heroGlow {
+  0%, 100% { opacity: .5; transform: scale(1); }
+  50% { opacity: .85; transform: scale(1.08); }
+}
+
+/* --- Service multi-image carousel ------------------------- */
+.service-thumb-multi {
+  position: relative;
+  overflow: hidden;
+}
+.service-thumb-multi .svc-img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  display: none;
+  border-radius: 4px 4px 0 0;
+}
+.service-thumb-multi .svc-img.active { display: block; }
+.svc-img-dots {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+}
+.svc-img-dots span {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.45);
+}
+.svc-img-dots span.active { background: #fff; }
+
+/* --- Luxury client-facing refinements --------------------- */
+.brand-header {
+  background: linear-gradient(180deg, rgba(10,8,6,0) 0%, transparent 100%);
+}
+.cta-row { padding-top: 20px; padding-bottom: 4px; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--gold, #b08d57) 0%, #c9a96e 100%);
+  box-shadow: 0 4px 16px rgba(176,141,87,.3);
+  letter-spacing: .12em;
+  transition: transform .15s, box-shadow .15s;
+}
+.btn-primary:active {
+  transform: scale(.97);
+  box-shadow: 0 2px 8px rgba(176,141,87,.2);
+}
+.service-card, .card.service-detail {
+  transition: box-shadow .2s, transform .2s;
+}
+.service-card:hover, .card.service-detail:hover {
+  box-shadow: 0 6px 24px rgba(0,0,0,.1);
+  transform: translateY(-1px);
+}
+.category-title {
+  letter-spacing: .15em;
+  font-weight: 600;
+}
+
+/* --- Rebook card luxury treatment ------------------------- */
+div[style*="YA NOS VISITASTE"] .card,
+.card .eyebrow + .subtitle { }
+.rebook-found-card {
+  border-color: var(--gold, #b08d57) !important;
+  background: linear-gradient(135deg, rgba(176,141,87,.06) 0%, transparent 100%);
+}
+
+/* --- Gallery category filter enhancements ---------------- */
+.gallery-filter-row { gap: 8px; flex-wrap: wrap; }
+
+/* --- Admin config tab field hint -------------------------- */
+.field-hint {
+  font-size: 11px;
+  color: var(--ink-light, #9a9289);
+  margin-top: 4px;
+}
+
+/* --- Notification multi-action layout -------------------- */
+.notification-row .row-actions {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* --- Transition polish ------------------------------------ */
+.screen { animation: fadeIn .18s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* --- Search box in admin ---------------------------------- */
+input[data-admin-clients-search] {
+  width: 100%;
+  box-sizing: border-box;
+}

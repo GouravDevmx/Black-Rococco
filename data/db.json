@@ -15,7 +15,7 @@
       "address2": "Zapopan, Jalisco · Ventana y portón verde",
       "hours1": "Lun – Sáb · 10:00 – 20:00",
       "hours2": "Domingo cerrado",
-      "whatsappNumber": "33 2655 3522",
+      "whatsappNumber": "3312345678",
       "whatsappUrl": "https://api.whatsapp.com/send/?phone=5213326553522&text=Hola%2C+quiero+agendar+una+cita+%E2%9C%A8",
       "mapsUrl": "https://www.google.com/maps/search/?api=1&query=Calzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan%2C+Jalisco",
       "instagramUrl": "https://www.instagram.com/black.rococo/",
@@ -81,6 +81,37 @@
         24,
         2
       ]
+    },
+    "googleCalendarIntegration": {},
+    "config": {
+      "whatsappNumber": "3312345678",
+      "colors": [
+        "Nude",
+        "Rojo",
+        "Negro",
+        "Rosa"
+      ],
+      "bebidas": [
+        "Café",
+        "Té",
+        "Agua"
+      ],
+      "estilos": [
+        "Natural",
+        "French",
+        "Editorial"
+      ],
+      "serviceCategories": [
+        "MANOS",
+        "PIES",
+        "EXTRAS"
+      ],
+      "galleryCategories": [
+        "Manicure Ruso",
+        "Poligel",
+        "Pedicure"
+      ],
+      "heroImages": []
     }
   },
   "services": [
@@ -92,7 +123,9 @@
       "price": 350,
       "dur": 60,
       "active": true,
-      "sort": 10
+      "sort": 10,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "rusogelish",
@@ -102,7 +135,9 @@
       "price": 500,
       "dur": 90,
       "active": true,
-      "sort": 20
+      "sort": 20,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "poligel",
@@ -112,7 +147,9 @@
       "price": 750,
       "dur": 120,
       "active": true,
-      "sort": 30
+      "sort": 30,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "retoquepoli",
@@ -122,7 +159,9 @@
       "price": 600,
       "dur": 90,
       "active": true,
-      "sort": 40
+      "sort": 40,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "rubber",
@@ -132,7 +171,9 @@
       "price": 480,
       "dur": 75,
       "active": true,
-      "sort": 50
+      "sort": 50,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "pedispa",
@@ -142,7 +183,9 @@
       "price": 600,
       "dur": 60,
       "active": true,
-      "sort": 60
+      "sort": 60,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "gelishpies",
@@ -152,7 +195,9 @@
       "price": 450,
       "dur": 45,
       "active": true,
-      "sort": 70
+      "sort": 70,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "nailart",
@@ -162,7 +207,9 @@
       "price": 50,
       "dur": 10,
       "active": true,
-      "sort": 80
+      "sort": 80,
+      "imageUrl": "",
+      "imageUrls": []
     },
     {
       "id": "retiro",
@@ -172,7 +219,9 @@
       "price": 150,
       "dur": 30,
       "active": true,
-      "sort": 90
+      "sort": 90,
+      "imageUrl": "",
+      "imageUrls": []
     }
   ],
   "clients": [
@@ -207,6 +256,22 @@
       "notes": "",
       "allergies": "Piel sensible, evitar exfoliante fuerte.",
       "updatedAt": "2026-07-01T18:00:00.000Z"
+    },
+    {
+      "id": "cli_1003",
+      "name": "Final Test",
+      "whatsapp": "3300001111",
+      "email": "",
+      "instagram": "",
+      "birthday": "",
+      "styleChoice": "",
+      "colorChoice": "",
+      "drinkChoice": "Café",
+      "timePreference": "",
+      "notes": "",
+      "allergies": "",
+      "createdAt": "2026-07-13T01:43:08.655Z",
+      "updatedAt": "2026-07-13T01:43:08.655Z"
     }
   ],
   "appointments": [
@@ -227,7 +292,8 @@
         "timePreference": "Mañanas entre 10:00 y 12:00",
         "notes": "Prefiere uñas medianas, acabado limpio y sin mucha pedrería.",
         "allergies": ""
-      }
+      },
+      "googleEventId": null
     },
     {
       "id": "apt_1002",
@@ -246,15 +312,62 @@
         "timePreference": "Tardes después de 14:00",
         "notes": "",
         "allergies": "Piel sensible, evitar exfoliante fuerte."
-      }
+      },
+      "googleEventId": null
+    },
+    {
+      "id": "apt_1003",
+      "folio": "BR-1003",
+      "clientId": "cli_1003",
+      "serviceId": "ruso",
+      "date": "2026-09-30",
+      "time": "12:00",
+      "status": "new",
+      "preferencesSnapshot": {
+        "styleChoice": "",
+        "colorChoice": "",
+        "drinkChoice": "Café",
+        "timePreference": "",
+        "notes": "",
+        "allergies": ""
+      },
+      "finalPrice": 350,
+      "appliedPromotion": null,
+      "remindersSent": {},
+      "createdAt": "2026-07-13T01:43:08.655Z"
     }
   ],
   "posts": [],
   "counters": {
-    "appointment": 1002,
-    "client": 1002,
+    "appointment": 1003,
+    "client": 1003,
     "post": 1000,
-    "notification": 1000
+    "notification": 1001,
+    "promotion": 1000,
+    "course": 1000,
+    "registration": 1000,
+    "service": 1000,
+    "media": 1000
   },
-  "notifications": []
+  "notifications": [
+    {
+      "id": "not_1001",
+      "kind": "new_booking",
+      "channel": "admin_panel",
+      "title": "Nueva cita BR-1003",
+      "message": "Final Test · Manicure ruso · 2026-09-30 12:00",
+      "appointmentId": "apt_1003",
+      "status": "unread",
+      "unread": true,
+      "actionLabel": "multi",
+      "actionUrl": "{\"whatsapp\":{\"label\":\"WhatsApp clienta\",\"url\":\"https://api.whatsapp.com/send/?phone=5213300001111&text=Hola%20Final%20Test%20%E2%9C%A8%20Te%20recordamos%20tu%20cita%20en%20Black%20Rococo.%0AServicio%3A%20Manicure%20ruso%0AFecha%3A%202026-09-30%0AHora%3A%2012%3A00%0ADirecci%C3%B3n%3A%20Calzada%20de%20los%20Pirules%20260%2C%20Ciudad%20Granja%2C%20Zapopan%2C%20Jalisco%20%C2%B7%20Ventana%20y%20port%C3%B3n%20verde%0ATenemos%20anotada%20tu%20bebida%20favorita%3A%20Caf%C3%A9.%0AResponde%20este%20mensaje%20si%20necesitas%20ayuda.\"},\"calendar\":{\"label\":\"Agregar a Calendar\",\"url\":\"https://calendar.google.com/calendar/render?action=TEMPLATE&text=Black+Rococo+-+Manicure+ruso+-+Final+Test&dates=20260930T120000%2F20260930T130000&ctz=America%2FMexico_City&details=Folio%3A+BR-1003%0AClienta%3A+Final+Test%0AWhatsApp%3A+3300001111%0AServicio%3A+Manicure+ruso%0AEstado%3A+NUEVA%0ABebida%3A+Caf%C3%A9&location=Calzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan%2C+Jalisco+%C2%B7+Ventana+y+port%C3%B3n+verde\",\"status\":\"setup_required\",\"message\":null},\"agenda\":{\"label\":\"Ver agenda\",\"url\":null}}",
+      "error": "",
+      "createdAt": "2026-07-13T01:43:08.656Z",
+      "updatedAt": "2026-07-13T01:43:08.656Z"
+    }
+  ],
+  "promotions": [],
+  "courses": [],
+  "courseRegistrations": [],
+  "media": []
 }
