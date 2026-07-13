@@ -33,6 +33,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { getSalonBySlug } = require('./lib/tenant');
+const { verifyStorageBucket } = require('./lib/uploads');
 const { readDb } = require('./lib/db');
 const { json, text } = require('./lib/helpers');
 const {
@@ -174,6 +175,25 @@ async function startServer() {
     SALON = salon;
     SALON_ID = salon.id;
     console.log(`Connected to Supabase salon "${salon.name}" (slug: ${SALON_SLUG}).`);
+
+    // Fail-fast on storage misconfiguration. Every image upload in the app
+    // (hero, services, gallery, courses, posts) writes to this one bucket, so
+    // if it's missing or private, uploads break everywhere at once — and the
+    // symptom looks like a broken button, not a config problem. Say so at boot.
+    try {
+      const storage = await verifyStorageBucket();
+      if (storage.ok) {
+        console.log(`Storage bucket "${storage.bucket}" OK (public).`);
+      } else {
+        console.warn('\n⚠  STORAGE NOT READY — las subidas de fotos van a fallar.');
+        console.warn(`   Motivo: ${storage.reason}`);
+        if (storage.buckets) console.warn(`   Buckets encontrados: ${storage.buckets.join(', ') || '(ninguno)'}`);
+        console.warn('   Arreglo: crea un bucket PÚBLICO con ese nombre en Supabase → Storage,');
+        console.warn('   o define SUPABASE_STORAGE_BUCKET con el nombre correcto.\n');
+      }
+    } catch (err) {
+      console.warn(`⚠  No se pudo verificar el bucket de storage: ${err.message}`);
+    }
   }
 
   setTimeout(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 5000);

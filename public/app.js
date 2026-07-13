@@ -65,6 +65,7 @@ const state = {
     configDraft: null,
     configSaving: false,
     configSuccess: '',
+    heroUploadingIndex: null,
     clientSearch: '',
     agendaView: 'daily',
     weeklyAppointments: [],
@@ -490,11 +491,27 @@ async function submitManualBooking() {
 async function handleMultiUploadFiles(input) {
   const files = [...(input.files || [])];
   if (!files.length) return;
+  // Validate everything first so a single bad file is reported immediately
+  // rather than after several megabytes have already gone over the wire.
+  const rejected = files
+    .map(f => ({ name: f.name, error: validateMediaFile(f, { allowVideo: true }) }))
+    .filter(r => r.error);
+  const accepted = files.filter(f => !validateMediaFile(f, { allowVideo: true }));
+  if (rejected.length) {
+    state.admin.error = rejected.map(r => `${r.name}: ${r.error}`).join(' · ');
+  } else {
+    state.admin.error = '';
+  }
+  if (!accepted.length) {
+    input.value = '';
+    return render();
+  }
   state.admin.multiUploading = true;
   state.admin.multiUploadProgress = 0;
-  state.admin.multiUploadFiles = files.map(f => ({ name: f.name, file: f, status: 'pending', url: '' }));
+  state.admin.multiUploadFiles = accepted.map(f => ({ name: f.name, file: f, status: 'pending', url: '' }));
   render();
   let completed = 0;
+  const total = state.admin.multiUploadFiles.length;
   for (const item of state.admin.multiUploadFiles) {
     try {
       item.status = 'uploading';
@@ -508,7 +525,7 @@ async function handleMultiUploadFiles(input) {
       item.error = err.message;
     }
     completed++;
-    state.admin.multiUploadProgress = Math.round((completed / files.length) * 100);
+    state.admin.multiUploadProgress = Math.round((completed / total) * 100);
     render();
   }
   state.admin.multiUploading = false;
@@ -569,6 +586,53 @@ async function updateService(id, patch) {
   }
   render();
 }
+
+// --- Shared media validation & error handling (used by EVERY upload surface) ---
+// These mirror lib/uploads.js exactly. Validating client-side first means a
+// 20 MB file fails instantly with a clear message instead of being uploaded in
+// full and only then rejected by the server.
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+
+function validateMediaFile(file, { allowVideo = false } = {}) {
+  if (!file) return 'Selecciona un archivo.';
+  const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+  const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+
+  if (!isImage && !(allowVideo && isVideo)) {
+    return allowVideo
+      ? 'Formato no permitido. Usa JPG, PNG, WEBP, GIF, MP4 o WEBM.'
+      : 'Formato no permitido. Usa JPG, PNG, WEBP o GIF.';
+  }
+  const max = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (file.size > max) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    return isVideo
+      ? `El video pesa ${mb} MB. Máximo 25 MB.`
+      : `La imagen pesa ${mb} MB. Máximo 6 MB.`;
+  }
+  return null; // valid
+}
+
+// Swaps a broken/expired image URL for a visible placeholder instead of the
+// browser's silent broken-image glyph. Wired up globally in the capture phase
+// below, so it covers every <img> the app renders, on every surface.
+function handleBrokenImage(img) {
+  if (img.dataset.brokenHandled) return;
+  img.dataset.brokenHandled = '1';
+  img.classList.add('img-broken');
+  img.removeAttribute('src');
+  img.alt = 'Imagen no disponible';
+}
+
+// `error` events from <img> do not bubble, so a normal listener never sees
+// them — the capture phase is the only way to catch them app-wide.
+document.addEventListener('error', event => {
+  const el = event.target;
+  if (el && el.tagName === 'IMG') handleBrokenImage(el);
+}, true);
 
 async function uploadAdminImage(file) {
   const fd = new FormData();
@@ -710,10 +774,19 @@ async function deletePromotion(id) {
 async function handleCourseImageFilesSelected(input) {
   const files = [...(input.files || [])];
   if (!files.length) return;
+  const rejected = files.map(f => ({ name: f.name, error: validateMediaFile(f) })).filter(r => r.error);
+  const accepted = files.filter(f => !validateMediaFile(f));
+  state.admin.error = rejected.length
+    ? rejected.map(r => `${r.name}: ${r.error}`).join(' · ')
+    : '';
+  if (!accepted.length) {
+    input.value = '';
+    return render();
+  }
   state.admin.courseImageUploading = true;
   render();
   try {
-    for (const file of files) {
+    for (const file of accepted) {
       const url = await uploadAdminImage(file);
       state.admin.courseImageDraft.push(url);
     }
@@ -792,6 +865,8 @@ async function createOrUpdateService(form) {
       const file = form.querySelector(`[name="imageFile${i}"]`)?.files?.[0];
       const existing = fd.get(`existingImageUrl${i}`) || '';
       if (file) {
+        const invalid = validateMediaFile(file);
+        if (invalid) throw new Error(`Foto ${i + 1}: ${invalid}`);
         imageUrls.push(await uploadAdminImage(file));
       } else if (existing) {
         imageUrls.push(existing);
@@ -849,6 +924,13 @@ async function deleteServiceEntry(id) {
 async function handleMediaFileSelected(input) {
   const file = input.files?.[0];
   if (!file) return;
+  const invalid = validateMediaFile(file, { allowVideo: true });
+  if (invalid) {
+    state.admin.error = invalid;
+    input.value = '';
+    return render();
+  }
+  state.admin.error = '';
   state.admin.mediaUploading = true;
   render();
   try {
@@ -2157,6 +2239,12 @@ function adminConfiguracion(data) {
   const contact = state.config?.contact || {};
   const booking = state.config?.booking || {};
   const saving = state.admin.configSaving;
+  // Hero images are edited live against state.salonConfig (single source of truth).
+  // Rendering them from configDraft would desync them from the click/input handlers.
+  if (!state.salonConfig) state.salonConfig = {};
+  if (!Array.isArray(state.salonConfig.heroImages)) state.salonConfig.heroImages = [];
+  const heroImages = state.salonConfig.heroImages;
+  const heroUploading = state.admin.heroUploadingIndex;
 
   const listField = (label, key, hint) => `
     <div class="form-field">
@@ -2230,23 +2318,30 @@ function adminConfiguracion(data) {
     <div class="card">
       <div class="eyebrow">FOTO PRINCIPAL (hasta 10 imágenes, carrusel automático)</div>
       <div class="subtitle" style="margin-bottom:12px">Configura las fotos del hero de la página de inicio. Cada foto puede tener un título y subtítulo propios.</div>
-      ${(cfg.heroImages||[]).map((img, i) => `
-        <div class="card" style="margin-bottom:8px">
+      ${heroImages.map((img, i) => `
+        <div class="card hero-img-row" style="margin-bottom:8px">
           <div class="form-grid two-col">
-            <div class="form-field"><label>URL foto ${i+1}</label><input value="${esc(img.url)}" data-hero-img-url="${i}"></div>
-            <div><button class="pill-button" data-upload-hero-img="${i}" style="margin-top:20px">SUBIR FOTO</button><input type="file" accept="image/*" data-hero-img-file="${i}" style="display:none"></div>
+            <div class="form-field"><label>URL foto ${i+1}</label><input value="${esc(img.url || '')}" data-hero-img-url="${i}" placeholder="Sube una foto o pega una URL"></div>
+            <div class="form-field">
+              <label>Archivo</label>
+              <input type="file" accept="image/png,image/jpeg,image/webp" data-hero-img-file="${i}" ${heroUploading === i ? 'disabled' : ''}>
+              ${heroUploading === i ? '<div class="field-hint">Subiendo...</div>' : ''}
+            </div>
           </div>
           <div class="form-grid two-col">
             <div class="form-field"><label>Título</label><input value="${esc(img.title||'')}" data-hero-img-title="${i}"></div>
             <div class="form-field"><label>Subtítulo</label><input value="${esc(img.subtitle||'')}" data-hero-img-subtitle="${i}"></div>
           </div>
-          ${img.url ? `<img src="${esc(img.url)}" style="width:100%;height:100px;object-fit:cover;border-radius:4px;margin-top:4px">` : ''}
-          <button class="pill-button" data-remove-hero-img="${i}" style="margin-top:8px;color:var(--error,red)">ELIMINAR</button>
+          ${img.url ? `<img src="${esc(img.url)}" alt="" style="width:100%;height:120px;object-fit:cover;border-radius:4px;margin-top:8px">` : ''}
+          <button type="button" class="pill-button" data-remove-hero-img="${i}" style="margin-top:8px;color:var(--red)">ELIMINAR</button>
         </div>`).join('')}
-      ${(cfg.heroImages||[]).length < 10
-        ? `<button class="btn btn-outline btn-small" data-add-hero-img>+ AGREGAR FOTO</button>`
-        : ''}
-      <button class="btn btn-primary" style="margin-top:12px" data-save-hero-images ${saving?'disabled':''}>GUARDAR FOTOS HERO</button>
+      ${heroImages.length ? '' : '<div class="empty">Aún no hay fotos hero. Agrega la primera.</div>'}
+      <div class="row-actions" style="margin-top:12px">
+        ${heroImages.length < 10
+          ? `<button type="button" class="btn btn-outline btn-small" data-add-hero-img>+ AGREGAR FOTO</button>`
+          : ''}
+        <button type="button" class="btn btn-primary btn-small" data-save-hero-images ${saving?'disabled':''}>${saving ? 'GUARDANDO...' : 'GUARDAR FOTOS HERO'}</button>
+      </div>
     </div>
   </div>`;
 }
@@ -2464,12 +2559,6 @@ app.addEventListener('click', async event => {
     return render();
   }
   if (target.hasAttribute('data-save-hero-images')) return saveHeroImages();
-  if (target.dataset.uploadHeroImg !== undefined) {
-    const idx = Number(target.dataset.uploadHeroImg);
-    const fileInput = document.querySelector(`[data-hero-img-file="${idx}"]`);
-    if (fileInput) fileInput.click();
-    return;
-  }
   if (target.dataset.markNotification) return markNotificationRead(target.dataset.markNotification);
   if (target.hasAttribute('data-mark-all-notifications')) return markAllNotificationsRead();
   if (target.hasAttribute('data-clear-all-notifications')) return clearAllNotifications();
@@ -2661,15 +2750,30 @@ app.addEventListener('change', async event => {
     const idx = Number(el.dataset.heroImgFile);
     const file = el.files?.[0];
     if (!file) return;
+    if (!state.salonConfig) state.salonConfig = {};
+    if (!Array.isArray(state.salonConfig.heroImages)) state.salonConfig.heroImages = [];
+    // Ensure the row exists before we write into it (previously failed silently).
+    if (!state.salonConfig.heroImages[idx]) {
+      state.salonConfig.heroImages[idx] = { url: '', title: '', subtitle: '' };
+    }
+    const invalid = validateMediaFile(file);
+    if (invalid) {
+      state.admin.error = invalid;
+      el.value = '';
+      return render();
+    }
+    state.admin.error = '';
+    state.admin.heroUploadingIndex = idx;
+    render();
     try {
       const url = await uploadAdminImage(file);
-      if (!state.salonConfig.heroImages) state.salonConfig.heroImages = [];
-      if (state.salonConfig.heroImages[idx]) state.salonConfig.heroImages[idx].url = url;
-      render();
+      if (!url) throw new Error('El servidor no devolvió una URL de imagen.');
+      state.salonConfig.heroImages[idx].url = url;
     } catch (err) {
-      state.admin.error = err.message;
-      render();
+      state.admin.error = `No se pudo subir la foto: ${err.message}`;
     }
+    state.admin.heroUploadingIndex = null;
+    render();
   }
 });
 

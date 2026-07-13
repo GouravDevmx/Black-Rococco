@@ -1552,3 +1552,30 @@ input[data-admin-clients-search] { width: 100%; box-sizing: border-box; }
 .stats .card .eyebrow {
   margin-bottom: 4px;
 }
+
+/* ===== Broken / unavailable image handling (media audit) ===== */
+/* Applied by handleBrokenImage() when an image URL 404s or the storage bucket
+   is misconfigured — replaces the browser's silent broken glyph with something
+   legible, so a bad URL is obvious instead of looking like a layout bug. */
+img.img-broken {
+  background:
+    repeating-linear-gradient(45deg, rgba(176,141,87,.07) 0 8px, transparent 8px 16px),
+    var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  min-height: 64px;
+  position: relative;
+}
+img.img-broken::after {
+  content: 'Imagen no disponible';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-align: center;
+  padding: 6px;
+}
