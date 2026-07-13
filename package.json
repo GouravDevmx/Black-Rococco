@@ -20,6 +20,7 @@
     "node": ">=18 <=24"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.2"
+    "@supabase/supabase-js": "^2.110.2",
+    "jsdom": "^29.1.1"
   }
 }

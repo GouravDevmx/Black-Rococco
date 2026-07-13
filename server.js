@@ -34,6 +34,28 @@ const path = require('path');
 
 const { getSalonBySlug } = require('./lib/tenant');
 const { verifyStorageBucket } = require('./lib/uploads');
+const { SITE_URL } = require('./lib/config');
+
+// P0: the social-preview tags in index.html hardcode https://blackrococo.mx.
+// og:image MUST be an absolute URL that actually resolves — WhatsApp, Facebook
+// and Instagram fetch it directly and do NOT execute JavaScript, so if that
+// domain isn't the one serving the app, every shared link renders with a blank
+// preview. Rewriting the canonical origin at serve time means the tags are
+// always correct for whatever domain is really live (set SITE_URL in Railway;
+// if it's unset we fall back to the request's own Host, which is still right).
+const CANONICAL_PLACEHOLDER = /https:\/\/blackrococo\.mx/g;
+
+function withCanonicalOrigin(html, req) {
+  let origin = SITE_URL;
+  if (!origin) {
+    const host = req.headers.host;
+    if (!host) return html; // nothing better to offer; leave as-is
+    const proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+      || (req.socket.encrypted ? 'https' : 'http');
+    origin = `${proto}://${host}`;
+  }
+  return html.replace(CANONICAL_PLACEHOLDER, origin);
+}
 const { readDb } = require('./lib/db');
 const { json, text } = require('./lib/helpers');
 const {
@@ -47,6 +69,8 @@ const servicesDomain = require('./lib/domains/services');
 const promotions = require('./lib/domains/promotions');
 const clientsDomain = require('./lib/domains/clients');
 const mediaDomain = require('./lib/domains/media');
+const staffDomain = require('./lib/domains/staff');
+const clientPhotosDomain = require('./lib/domains/client-photos');
 const coursesDomain = require('./lib/domains/courses');
 const postsDomain = require('./lib/domains/posts');
 const notificationsDomain = require('./lib/domains/notifications');
@@ -100,7 +124,12 @@ async function handleApi(req, res, pathname, url) {
       if (await adminDashboard.handleAdminRoutes(adminCtx)) return;
       if (await notificationsDomain.handleAdminRoutes(adminCtx)) return;
       if (await bookings.handleAdminRoutes(adminCtx)) return;
+      // Must run BEFORE clientsDomain: that module matches
+      // /api/admin/clients/:id, which would otherwise swallow the nested
+      // /api/admin/clients/:id/photos routes.
+      if (await clientPhotosDomain.handleAdminRoutes(adminCtx)) return;
       if (await clientsDomain.handleAdminRoutes(adminCtx)) return;
+      if (await staffDomain.handleAdminRoutes(adminCtx)) return;
       if (await servicesDomain.handleAdminRoutes(adminCtx)) return;
       if (await promotions.handleAdminRoutes(adminCtx)) return;
       if (await coursesDomain.handleAdminRoutes(adminCtx)) return;
@@ -136,32 +165,81 @@ function contentType(filePath) {
 
 function serveStatic(req, res, pathname) {
   let rel = pathname === '/' ? 'index.html' : pathname.slice(1);
-  rel = decodeURIComponent(rel);
+
+  // decodeURIComponent throws URIError on malformed input (e.g. a bare `%`).
+  // Unguarded, that crashed the whole server — see the http.createServer
+  // comment above. A bad path is a 400, not a fatal error.
+  try {
+    rel = decodeURIComponent(rel);
+  } catch {
+    return text(res, 400, 'Bad request');
+  }
+
+  // Reject NUL bytes outright: path APIs treat them as string terminators, so
+  // "safe.png\0../../etc/passwd" can smuggle a traversal past naive checks.
+  if (rel.includes('\0')) return text(res, 400, 'Bad request');
+
   const filePath = path.normalize(path.join(PUBLIC_DIR, rel));
-  if (!filePath.startsWith(PUBLIC_DIR)) return text(res, 403, 'Forbidden');
+
+  // P0: the guard used to be `filePath.startsWith(PUBLIC_DIR)`, a raw prefix
+  // test with no path-boundary check. "/app/public" also prefixes
+  // "/app/public-secret", so `../public-secret/x` normalized to a SIBLING
+  // directory and sailed straight through. Compare against PUBLIC_DIR + sep.
+  const root = PUBLIC_DIR.endsWith(path.sep) ? PUBLIC_DIR : PUBLIC_DIR + path.sep;
+  if (filePath !== PUBLIC_DIR && !filePath.startsWith(root)) {
+    return text(res, 403, 'Forbidden');
+  }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      // SPA fallback: any unknown path serves index.html.
       fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (fallbackErr, fallback) => {
         if (fallbackErr) return text(res, 404, 'Not found');
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(fallback);
+        res.end(withCanonicalOrigin(fallback.toString('utf8'), req));
       });
       return;
     }
+
+    const isHtml = filePath.endsWith('.html');
+    const body = isHtml ? withCanonicalOrigin(data.toString('utf8'), req) : data;
+
     res.writeHead(200, {
       'Content-Type': contentType(filePath),
-      'Cache-Control': filePath.endsWith('.html') ? 'no-store' : 'public, max-age=3600'
+      'Cache-Control': isHtml ? 'no-store' : 'public, max-age=3600'
     });
-    res.end(data);
+    res.end(body);
   });
 }
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  // P0: this callback used to be completely unguarded. `new URL()` throws on a
+  // malformed Host header, and serveStatic's decodeURIComponent() throws
+  // URIError on a malformed path — so a single `GET /%` raised an
+  // uncaughtException and KILLED THE PROCESS. Any visitor could take the salon
+  // offline with one request, repeatedly. Nothing may escape this try/catch.
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  } catch {
+    return text(res, 400, 'Bad request');
+  }
+
   const pathname = url.pathname;
-  if (pathname.startsWith('/api/')) return handleApi(req, res, pathname, url);
-  return serveStatic(req, res, pathname);
+  try {
+    if (pathname.startsWith('/api/')) {
+      // handleApi is async: a rejected promise here would become an
+      // unhandledRejection, which Node also treats as fatal. Catch it.
+      return handleApi(req, res, pathname, url).catch(err => {
+        console.error(`[${new Date().toISOString()}] unhandled API rejection ${req.method} ${pathname} ->`, err.stack || err.message);
+        if (!res.headersSent) json(res, 500, { error: 'Ocurrió un error inesperado.' });
+      });
+    }
+    return serveStatic(req, res, pathname);
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] request handler threw ${req.method} ${pathname} ->`, err.stack || err.message);
+    if (!res.headersSent) text(res, 500, 'Internal error');
+  }
 });
 
 async function startServer() {
@@ -198,6 +276,16 @@ async function startServer() {
 
   setTimeout(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 5000);
   setInterval(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 10 * 60 * 1000);
+
+  // Last line of defence. A single unhandled throw anywhere must not be able to
+  // take the salon's booking site offline. Log loudly and keep serving: a
+  // half-broken request is strictly better than a dead process.
+  process.on('uncaughtException', err => {
+    console.error(`[${new Date().toISOString()}] UNCAUGHT EXCEPTION (server kept alive):`, err.stack || err.message);
+  });
+  process.on('unhandledRejection', err => {
+    console.error(`[${new Date().toISOString()}] UNHANDLED REJECTION (server kept alive):`, (err && err.stack) || err);
+  });
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Black Rococo running on port ${PORT}`);

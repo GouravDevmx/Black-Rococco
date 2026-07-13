@@ -4,7 +4,8 @@ const state = {
   mode: 'client',
   tab: 'inicio',
   config: null,
-  salonConfig: { colors: [], bebidas: [], estilos: [], serviceCategories: [], galleryCategories: [], heroImages: [] },
+  salonConfig: { colors: [], bebidas: [], estilos: [], serviceCategories: [], galleryCategories: [], heroImages: [], aboutUs: { title: '', text: '', images: [] } },
+  staff: [],
   services: [],
   groupedServices: {},
   promotions: [],
@@ -66,6 +67,13 @@ const state = {
     configSaving: false,
     configSuccess: '',
     heroUploadingIndex: null,
+    editingStaffId: null,
+    staffPhotoDraft: '',
+    staffUploading: false,
+    clientPhotoUploading: false,
+    aboutUsDraft: null,
+    aboutUsUploading: false,
+    promoImageDraft: '',
     clientSearch: '',
     agendaView: 'daily',
     weeklyAppointments: [],
@@ -90,17 +98,16 @@ const state = {
 
 const money = value => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(value || 0);
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
-// In multi-tenant SaaS mode, the salon is resolved server-side from a
-// subdomain, a query param (?salon=slug), or this header — in that priority
-// order (see lib/tenant.js). Reading it once here and sending it as a
-// header means the query param only needs to be in the URL on first load;
-// it isn't required on every internal SPA navigation afterwards.
-const SALON_SLUG = new URLSearchParams(location.search).get('salon') || '';
+// SINGLE-SALON PRODUCT.
+// There used to be a `?salon=<slug>` param here that was forwarded as an
+// `X-Salon-Slug` header on every request. The server ignores it entirely — it
+// resolves the one salon once at boot (server.js: `const salonId = SALON_ID`) —
+// so the header was dead weight, and a client-supplied tenant hint on a
+// single-tenant product is a footgun waiting to be re-wired. Removed.
 
 const api = (url, options = {}) => fetch(url, {
   headers: {
     'Content-Type': 'application/json',
-    ...(SALON_SLUG ? { 'X-Salon-Slug': SALON_SLUG } : {}),
     ...(options.headers || {})
   },
   credentials: 'same-origin',
@@ -125,6 +132,146 @@ function splitBrand(name) {
   const parts = String(name || 'BLACK ROCOCO').split(' ');
   if (parts.length <= 1) return [name, ''];
   return [parts[0], parts.slice(1).join(' ')];
+}
+
+
+// ===========================================================================
+// AUTO-CAROUSEL ENGINE
+//
+// One engine drives every image carousel in the app (hero, service cards,
+// service detail modal, featured services). Three rules:
+//
+//   1. NEVER call render(). Advancing a slide toggles an `active` class on
+//      elements already in the DOM, so the browser crossfades two decoded
+//      layers. render() does `app.innerHTML = ...`, which tears down and
+//      rebuilds the whole page — that is what used to make everything blink
+//      and re-fetch the Google Maps iframe every few seconds.
+//   2. Every slide is in the DOM from the start. That is what makes images 2
+//      and 3 of a service reachable on a phone: no hover required.
+//   3. One shared ticker, not one timer per carousel. Cheaper, and every
+//      carousel on screen stays in step.
+// ===========================================================================
+
+const CAROUSEL_INTERVAL_MS = 3000;
+
+function carouselSlides(el) {
+  return [...el.querySelectorAll('.ac-slide')];
+}
+
+function carouselGo(el, index) {
+  const slides = carouselSlides(el);
+  if (slides.length < 2) return;
+  const dots = [...el.querySelectorAll('.ac-dot')];
+  const next = ((index % slides.length) + slides.length) % slides.length; // safe wrap
+
+  slides.forEach((s, i) => s.classList.toggle('active', i === next));
+  dots.forEach((d, i) => d.classList.toggle('active', i === next));
+
+  const counter = el.querySelector('.ac-counter');
+  if (counter) counter.textContent = `${next + 1} / ${slides.length}`;
+
+  el.dataset.acIndex = String(next);
+
+  // Hero slides carry their own caption; swap it in place.
+  if (el.hasAttribute('data-ac-caption')) {
+    const slide = slides[next];
+    const titleEl = document.querySelector('[data-hero-title]');
+    const subEl = document.querySelector('[data-hero-subtitle]');
+    if (titleEl) titleEl.textContent = slide.dataset.acTitle || state.config?.brand?.heroTitle || '';
+    if (subEl) subEl.textContent = slide.dataset.acSubtitle || state.config?.brand?.heroSubtitle || '';
+    state.heroSlide = next;
+  }
+}
+
+function carouselAdvance(el, dir = 1) {
+  carouselGo(el, Number(el.dataset.acIndex || 0) + dir);
+}
+
+// Only cycle what the user can actually see. An off-screen carousel would burn
+// CPU and, worse, silently advance past its images before being scrolled to.
+function carouselVisible(el) {
+  const r = el.getBoundingClientRect();
+  return r.bottom > 0 && r.top < window.innerHeight && r.width > 0;
+}
+
+let carouselTicker = null;
+
+function startCarouselTicker() {
+  clearInterval(carouselTicker);
+  carouselTicker = setInterval(() => {
+    if (document.hidden) return; // background tab: don't burn cycles
+    document.querySelectorAll('.auto-carousel[data-ac-autoplay]').forEach(el => {
+      if (el._acPaused) return;
+      if (!carouselVisible(el)) return;
+      carouselAdvance(el, 1);
+    });
+  }, CAROUSEL_INTERVAL_MS);
+}
+
+// Coming back to a backgrounded tab shouldn't fast-forward several slides.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) startCarouselTicker();
+});
+
+// Pause while the pointer is over a carousel, so it can't advance out from
+// under someone deliberately looking at a photo.
+document.addEventListener('mouseenter', e => {
+  const el = e.target.closest?.('.auto-carousel');
+  if (el) el._acPaused = true;
+}, true);
+document.addEventListener('mouseleave', e => {
+  const el = e.target.closest?.('.auto-carousel');
+  if (el) el._acPaused = false;
+}, true);
+
+// Swipe — the primary way people will actually browse service photos on a phone.
+let acTouchX = null;
+let acTouchEl = null;
+document.addEventListener('touchstart', e => {
+  const el = e.target.closest?.('.auto-carousel');
+  if (!el) return;
+  acTouchEl = el;
+  acTouchX = e.touches[0].clientX;
+  el._acPaused = true;
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+  if (!acTouchEl || acTouchX === null) return;
+  const dx = e.changedTouches[0].clientX - acTouchX;
+  if (Math.abs(dx) > 40) carouselAdvance(acTouchEl, dx < 0 ? 1 : -1);
+  acTouchEl._acPaused = false;
+  acTouchEl = null;
+  acTouchX = null;
+}, { passive: true });
+
+/**
+ * Builds a carousel. Every image is emitted up-front — that is the whole point:
+ * it is what makes photos 2 and 3 reachable without hover.
+ *
+ * opts: alt, dots, arrows, counter, autoplay, className, captions, eager
+ */
+function autoCarousel(images, opts = {}) {
+  const list = (images || []).filter(Boolean);
+  if (!list.length) return '';
+
+  const {
+    alt = '', arrows = false, counter = false,
+    autoplay = true, className = '', captions = null, eager = false
+  } = opts;
+  const multi = list.length > 1;
+  const dots = opts.dots !== false && multi;
+
+  return `<div class="auto-carousel ${className}"${autoplay && multi ? ' data-ac-autoplay' : ''}${captions ? ' data-ac-caption' : ''} data-ac-index="0">
+    <div class="ac-viewport">
+      ${list.map((url, i) => {
+        const cap = (captions && captions[i]) || {};
+        return `<img class="ac-slide ${i === 0 ? 'active' : ''}" src="${esc(url)}" alt="${esc(alt)}" loading="${eager && i === 0 ? 'eager' : 'lazy'}"${cap.title ? ` data-ac-title="${esc(cap.title)}"` : ''}${cap.subtitle ? ` data-ac-subtitle="${esc(cap.subtitle)}"` : ''}>`;
+      }).join('')}
+    </div>
+    ${arrows && multi ? `<button class="ac-arrow ac-prev" data-ac-prev aria-label="Anterior">‹</button><button class="ac-arrow ac-next" data-ac-next aria-label="Siguiente">›</button>` : ''}
+    ${counter && multi ? `<div class="ac-counter">1 / ${list.length}</div>` : ''}
+    ${dots ? `<div class="ac-dots">${list.map((_, i) => `<button class="ac-dot ${i === 0 ? 'active' : ''}" data-ac-go="${i}" aria-label="Foto ${i + 1}"></button>`).join('')}</div>` : ''}
+  </div>`;
 }
 
 function socialIconSvg(platform) {
@@ -186,9 +333,35 @@ function whatsappTo(phone, message) {
 }
 
 function todayLocal() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
+  return ymdLocal(new Date());
+}
+
+// P0: formats a Date as YYYY-MM-DD in the LOCAL calendar.
+//
+// The weekly agenda used raw `d.toISOString().slice(0, 10)`, which converts to
+// UTC first. Guadalajara is UTC-6, so from 18:00 local onward the UTC date is
+// already tomorrow — the whole week grid, and the date range requested from the
+// API, silently shifted forward by one day every evening. The owner checking
+// tomorrow's schedule after closing saw the wrong week.
+//
+// Reading the local Y/M/D components directly has no timezone conversion at all,
+// so it cannot drift.
+function ymdLocal(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// P0: Monday-start week containing `date`.
+//
+// The old expression was `date.getDate() - date.getDay() + 1`. On a SUNDAY
+// getDay() is 0, so that resolved to TOMORROW — the grid jumped to next week and
+// today wasn't even in it. Mapping Mon..Sun to 0..6 fixes the wrap.
+function startOfWeekLocal(date) {
+  const d = new Date(date);
+  const mondayOffset = (d.getDay() + 6) % 7; // Mon=0, Tue=1, ... Sun=6
+  d.setDate(d.getDate() - mondayOffset);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 function dateOptions() {
@@ -197,7 +370,7 @@ function dateOptions() {
   for (let i = 0; i < 7; i += 1) {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const ymd = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const ymd = ymdLocal(d);
     days.push({ ymd, day: dayNames[d.getDay()], num: d.getDate() });
   }
   return days;
@@ -235,6 +408,7 @@ async function loadInitial() {
   const data = await api('/api/config');
   state.config = data.settings;
   state.salonConfig = data.salonConfig || { colors: [], bebidas: [], estilos: [], serviceCategories: [], galleryCategories: [], heroImages: [] };
+  state.staff = data.staff || [];
   state.services = data.services;
   state.groupedServices = data.groupedServices;
   state.promotions = data.promotions || [];
@@ -427,12 +601,11 @@ async function deleteNotification(id) {
 
 async function loadWeeklyAppointments() {
   const today = new Date();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+  const startOfWeek = startOfWeekLocal(today);
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
-  const start = startOfWeek.toISOString().slice(0, 10);
-  const end = endOfWeek.toISOString().slice(0, 10);
+  const start = ymdLocal(startOfWeek);
+  const end = ymdLocal(endOfWeek);
   try {
     const data = await api(`/api/admin/appointments/range?start=${start}&end=${end}`);
     state.admin.weeklyAppointments = data.appointments || [];
@@ -640,7 +813,8 @@ async function uploadAdminImage(file) {
   const res = await fetch('/api/admin/uploads', {
     method: 'POST',
     credentials: 'same-origin',
-    headers: SALON_SLUG ? { 'X-Salon-Slug': SALON_SLUG } : {},
+    // No explicit headers: the browser must set multipart/form-data itself,
+    // including the boundary. Setting Content-Type by hand here would break it.
     body: fd
   });
   const payload = await res.json().catch(() => ({}));
@@ -654,7 +828,8 @@ async function uploadAdminMediaFile(file) {
   const res = await fetch('/api/admin/uploads', {
     method: 'POST',
     credentials: 'same-origin',
-    headers: SALON_SLUG ? { 'X-Salon-Slug': SALON_SLUG } : {},
+    // No explicit headers: the browser must set multipart/form-data itself,
+    // including the boundary. Setting Content-Type by hand here would break it.
     body: fd
   });
   const payload = await res.json().catch(() => ({}));
@@ -715,6 +890,7 @@ async function submitCourseRegistration() {
 }
 
 async function createOrUpdatePromotion(form) {
+  state.admin.promoImageDraft = '';
   const editingId = form.dataset.promoForm;
   const fd = new FormData(form);
   const body = {
@@ -731,6 +907,7 @@ async function createOrUpdatePromotion(form) {
     endDate: fd.get('endDate') || '',
     usageLimit: Number(fd.get('usageLimit') || 0),
     autoApply: fd.get('autoApply') === 'on',
+    imageUrl: fd.get('imageUrl') || '',
     active: fd.get('active') === 'on'
   };
   try {
@@ -1016,15 +1193,6 @@ async function updateCourseRegistrationStatus(id, status) {
   render();
 }
 
-function topSwitch() {
-  return `<div class="top-switch">
-    <div class="demo-label">MVP FUNCIONAL</div>
-    <div class="pill-row">
-      <button class="pill-button ${state.mode === 'client' ? 'active' : ''}" data-action="client">CLIENTE</button>
-      <button class="pill-button ${state.mode === 'admin' ? 'active' : ''}" data-action="admin">ADMIN</button>
-    </div>
-  </div>`;
-}
 
 function brandHeader() {
   const [one, two] = splitBrand(state.config.brand.name);
@@ -1051,8 +1219,11 @@ function promoBanner() {
 }
 
 function featuredServiceCarouselCard(s) {
+  const imgs = (s.imageUrls && s.imageUrls.length) ? s.imageUrls : (s.imageUrl ? [s.imageUrl] : []);
   return `<button class="carousel-service-card" data-book="${esc(s.id)}">
-    ${s.imageUrl ? `<img src="${esc(s.imageUrl)}" alt="${esc(s.name)}" loading="lazy">` : `<div class="carousel-service-fallback"></div>`}
+    ${imgs.length
+      ? autoCarousel(imgs, { alt: s.name, className: 'ac-fill', dots: imgs.length > 1 })
+      : `<div class="carousel-service-fallback"></div>`}
     <div class="carousel-service-caption">
       <div class="cap-title">${esc(s.name)}</div>
       <div class="cap-desc">${esc(s.desc)}</div>
@@ -1158,7 +1329,14 @@ function serviceDetailModal() {
   return `<div class="modal-overlay" data-close-service-modal>
     <div class="modal-card">
       <button class="modal-close" data-close-service-modal aria-label="Cerrar">✕</button>
-      ${s.imageUrl ? `<div class="modal-image"><img src="${esc(s.imageUrl)}" alt="${esc(s.name)}" loading="lazy"></div>` : ''}
+      ${(() => {
+        // Every uploaded image, with arrows + dots + a counter. This used to
+        // render s.imageUrl alone, so photos 2 and 3 were unreachable.
+        const modalImgs = (s.imageUrls && s.imageUrls.length) ? s.imageUrls : (s.imageUrl ? [s.imageUrl] : []);
+        return modalImgs.length
+          ? `<div class="modal-image">${autoCarousel(modalImgs, { alt: s.name, arrows: true, counter: true, className: 'ac-fill', eager: true })}</div>`
+          : '';
+      })()}
       <div class="modal-body">
         <div class="category-title">${esc(s.cat)}</div>
         <div class="service-name" style="font-size:22px;margin:6px 0">${esc(s.name)}</div>
@@ -1176,10 +1354,9 @@ function serviceButton(s, detailed = false) {
   if (detailed) {
     const imgs = (s.imageUrls && s.imageUrls.length) ? s.imageUrls : (s.imageUrl ? [s.imageUrl] : []);
     return `<div class="card svc-card-redesign" data-view-service="${esc(s.id)}">
-      ${imgs.length ? `<div class="svc-card-img">
-        ${imgs.map((url, i) => `<img src="${esc(url)}" alt="${esc(s.name)}" loading="lazy" class="svc-img ${i === 0 ? 'active' : ''}" data-svc-img-idx="${i}">`).join('')}
-        ${imgs.length > 1 ? `<div class="svc-img-dots">${imgs.map((_,i)=>`<span class="${i===0?'active':''}"></span>`).join('')}</div>` : ''}
-      </div>` : `<div class="svc-card-img svc-card-img-placeholder"></div>`}
+      ${imgs.length
+        ? `<div class="svc-card-img">${autoCarousel(imgs, { alt: s.name, className: 'ac-fill' })}</div>`
+        : `<div class="svc-card-img svc-card-img-placeholder"></div>`}
       <div class="svc-card-body">
         <div class="svc-card-name">${esc(s.name)}</div>
         <p class="svc-card-desc">${esc(s.desc)}</p>
@@ -1206,17 +1383,40 @@ function homeScreen() {
   const heroItem = heroImages[heroSlide] || null;
   state.homeCarouselCache = carouselMedia;
 
+  // About Us + team, both managed from the admin panel
+  const about = state.salonConfig?.aboutUs || {};
+  const aboutImages = (about.images || []).filter(Boolean);
+  state.aboutImagesCache = aboutImages;
+  const team = state.staff || [];
+
   // Social links
   const whatsappNum = (c.contact?.whatsappNumber || '').replace(/\D/g, '') || '5213326553522';
   const socialLinks = [
     { name: 'Instagram', url: c.contact.instagramUrl, icon: socialIconSvg('instagram') },
     { name: 'WhatsApp', url: `https://api.whatsapp.com/send/?phone=${whatsappNum}`, icon: socialIconSvg('whatsapp') },
     { name: 'TikTok', url: c.contact.tiktokUrl, icon: socialIconSvg('tiktok') },
-    { name: 'Facebook', url: c.contact.facebookUrl || 'https://www.facebook.com/blackrococomx/', icon: socialIconSvg('facebook') }
+    { name: 'Facebook', url: c.contact.facebookUrl, icon: socialIconSvg('facebook') }
   ].filter(l => l.url);
 
   // Google Maps embed URL
-  const mapsEmbedSrc = 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3732.5!2d-103.4408!3d20.7105!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2sCalzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan!5e0!3m2!1ses!2smx';
+  // P0: this used to be a HARDCODED embed URL with fixed coordinates and a
+  // placeholder place-ID of literally `0x0:0x0`. The admin panel offers editable
+  // Address fields, but the map ignored them entirely — so changing the address
+  // in Configuración updated the text above the map while the map itself kept
+  // pointing at the old location. The two silently disagreed, and a customer
+  // following the pin could be sent to the wrong place.
+  //
+  // Now derived from the saved address. `?q=<address>&output=embed` is Google's
+  // keyless embed form: it geocodes the address string at render time, so the
+  // map always matches whatever Configuración says. No API key required, so
+  // there is nothing extra to provision or to expire.
+  const mapsQuery = [c.contact.address1, c.contact.address2]
+    .map(part => String(part || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const mapsEmbedSrc = mapsQuery
+    ? `https://www.google.com/maps?q=${encodeURIComponent(mapsQuery)}&hl=es&z=16&output=embed`
+    : '';
 
   return `<section class="screen">
     ${brandHeader()}
@@ -1225,16 +1425,21 @@ function homeScreen() {
     <div class="hero ${heroImages.length ? 'hero-has-image' : ''}">
       ${heroImages.length
         ? `<div class="hero-img-wrap">
-            <img class="hero-img" src="${esc(heroItem.url)}" alt="${esc(heroItem.title||'')}" loading="eager">
+            ${autoCarousel(
+              heroImages.map(h => h.url),
+              {
+                alt: '',
+                className: 'ac-fill hero-carousel',
+                eager: true,
+                captions: heroImages.map(h => ({ title: h.title, subtitle: h.subtitle }))
+              }
+            )}
             <div class="hero-img-overlay"></div>
-          </div>
-          ${heroImages.length > 1
-            ? `<div class="hero-nav">${heroImages.map((_,i) => `<button class="hero-dot ${i===heroSlide?'active':''}" data-hero-slide="${i}"></button>`).join('')}</div>`
-            : ''}`
+          </div>`
         : `<div class="hero-art"><div class="hero-art-inner">✦</div></div>`}
       <div class="hero-overlay">
-        <div class="hero-title">${esc(heroItem?.title || c.brand.heroTitle)}</div>
-        <div class="hero-subtitle">${esc(heroItem?.subtitle || c.brand.heroSubtitle)}</div>
+        <div class="hero-title" data-hero-title>${esc(heroItem?.title || c.brand.heroTitle)}</div>
+        <div class="hero-subtitle" data-hero-subtitle>${esc(heroItem?.subtitle || c.brand.heroSubtitle)}</div>
       </div>
     </div>
     <div class="section-tight cta-row">
@@ -1251,13 +1456,16 @@ function homeScreen() {
 
     ${promoBanner()}
 
-    <!-- 3. ABOUT US -->
+    <!-- 3. ABOUT US (content + images managed in Admin -> CONFIGURACIÓN) -->
     <div class="section about-section">
       <div class="about-inner">
-        <div class="about-eyebrow">SOBRE NOSOTROS</div>
+        <div class="about-eyebrow">${esc((about.title || 'Sobre Nosotros').toUpperCase())}</div>
         <div class="about-title">${esc(c.brand.name || 'Black Rococo')}</div>
         <div class="about-rule"></div>
-        <p class="about-text">Somos un estudio profesional de uñas en Ciudad Granja, Zapopan. Nos especializamos en manicure ruso, poligel, rubber base, gelish y pedicure spa. Cada servicio está diseñado para ofrecer resultados impecables en un ambiente cálido y exclusivo. Tu satisfacción y bienestar son nuestra prioridad.</p>
+        <p class="about-text">${esc(about.text || 'Somos un estudio profesional de uñas en Ciudad Granja, Zapopan.')}</p>
+        ${aboutImages.length ? `<div class="about-image-grid about-count-${Math.min(aboutImages.length, 3)}">
+          ${aboutImages.map((url, i) => `<img src="${esc(url)}" alt="" loading="lazy" data-about-lightbox="${i}">`).join('')}
+        </div>` : ''}
         <div class="about-stats">
           <div><span class="about-stat-number">${esc(c.brand.rating || '4.9')}</span><span class="about-stat-label">Calificación</span></div>
           <div><span class="about-stat-number">+500</span><span class="about-stat-label">Clientas felices</span></div>
@@ -1265,6 +1473,22 @@ function homeScreen() {
         </div>
       </div>
     </div>
+
+    ${team.length ? `<!-- 3b. TEAM -->
+    <div class="section team-section">
+      <div class="section-head"><div><div class="title">Nuestro Equipo</div><div class="subtitle">Las manos detrás de tus uñas</div></div></div>
+      <div class="team-grid">
+        ${team.map(m => `<div class="team-card">
+          ${m.photoUrl
+            ? `<img class="team-photo" src="${esc(m.photoUrl)}" alt="${esc(m.name)}" loading="lazy">`
+            : `<div class="team-photo team-photo-empty">${esc((m.name || '?').charAt(0))}</div>`}
+          <div class="team-name">${esc(m.name)}</div>
+          ${m.role ? `<div class="team-role">${esc(m.role)}</div>` : ''}
+          ${m.bio ? `<p class="team-bio">${esc(m.bio)}</p>` : ''}
+          ${m.instagram ? `<a class="team-ig" href="${esc(m.instagram)}" target="_blank" rel="noopener">Instagram</a>` : ''}
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
 
     <!-- 4. GALLERY -->
     <div class="section">
@@ -1285,9 +1509,9 @@ function homeScreen() {
         <p>${esc(c.contact.address1)}${c.contact.address2 ? '<br>' + esc(c.contact.address2) : ''}</p>
         <p class="map-hours">${esc(c.contact.hours1)}${c.contact.hours2 ? ' · ' + esc(c.contact.hours2) : ''}</p>
       </div>
-      <div class="map-embed">
+      ${mapsEmbedSrc ? `<div class="map-embed">
         <iframe
-          src="${mapsEmbedSrc}"
+          src="${esc(mapsEmbedSrc)}"
           width="100%" height="300"
           style="border:0;border-radius:8px"
           allowfullscreen=""
@@ -1295,7 +1519,7 @@ function homeScreen() {
           referrerpolicy="no-referrer-when-downgrade"
           title="Black Rococo en Google Maps"
         ></iframe>
-      </div>
+      </div>` : ''}
       <div class="map-actions">
         <a class="btn btn-outline btn-small" target="_blank" rel="noopener" href="${esc(c.contact.mapsUrl)}">ABRIR EN GOOGLE MAPS</a>
         <a class="btn btn-outline btn-small" target="_blank" rel="noopener" href="${esc(whatsappChatUrl())}">CONTACTAR POR WHATSAPP</a>
@@ -1590,7 +1814,7 @@ function adminScreen() {
       <div class="card"><div class="eyebrow">NOTIFICACIONES</div><div class="stat-number">${esc(data?.unreadNotifications || 0)}</div></div>
     </div>
     <div class="pill-row admin-tabs">
-      ${[['agenda','AGENDA'],['notificaciones',`NOTIFICACIONES${data?.unreadNotifications ? ` (${data.unreadNotifications})` : ''}`],['servicios','SERVICIOS'],['promociones','PROMOCIONES'],['clientas','CLIENTAS'],['academia','ACADEMIA'],['galeria','GALERÍA'],['publicar','PUBLICAR'],['integraciones','INTEGRACIONES'],['configuracion','CONFIGURACIÓN']].map(([id,label]) => `<button class="pill-button ${state.admin.tab === id ? 'active' : ''}" data-admin-tab="${id}">${label}</button>`).join('')}
+      ${[['agenda','AGENDA'],['notificaciones',`NOTIFICACIONES${data?.unreadNotifications ? ` (${data.unreadNotifications})` : ''}`],['servicios','SERVICIOS'],['promociones','PROMOCIONES'],['clientas','CLIENTAS'],['equipo','EQUIPO'],['academia','ACADEMIA'],['galeria','GALERÍA'],['publicar','PUBLICAR'],['integraciones','INTEGRACIONES'],['configuracion','CONFIGURACIÓN']].map(([id,label]) => `<button class="pill-button ${state.admin.tab === id ? 'active' : ''}" data-admin-tab="${id}">${label}</button>`).join('')}
     </div>
     ${state.admin.error ? `<div class="error-box">${esc(state.admin.error)}</div>` : ''}
     ${state.admin.tab === 'agenda' ? adminAgenda(data) : ''}
@@ -1598,6 +1822,7 @@ function adminScreen() {
     ${state.admin.tab === 'servicios' ? adminServices(data) : ''}
     ${state.admin.tab === 'promociones' ? adminPromotions(data) : ''}
     ${state.admin.tab === 'clientas' ? adminClients(data) : ''}
+    ${state.admin.tab === 'equipo' ? adminStaff(data) : ''}
     ${state.admin.tab === 'academia' ? adminAcademia(data) : ''}
     ${state.admin.tab === 'galeria' ? adminGallery(data) : ''}
     ${state.admin.tab === 'publicar' ? adminPublish(data) : ''}
@@ -1686,14 +1911,11 @@ function adminAgenda(data) {
 function adminAgendaWeekly(data, list, times) {
   const weekDays = [];
   const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-  const today = new Date();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Monday
-
+  const startOfWeek = startOfWeekLocal(new Date()); // Monday-start, Sunday-safe
   for (let i = 0; i < 7; i++) {
     const d = new Date(startOfWeek);
     d.setDate(startOfWeek.getDate() + i);
-    const ymd = d.toISOString().slice(0, 10);
+    const ymd = ymdLocal(d); // local, not UTC — see ymdLocal()
     weekDays.push({ ymd, name: dayNames[d.getDay()], num: d.getDate(), isToday: ymd === todayLocal() });
   }
 
@@ -1859,6 +2081,15 @@ function adminPromotions(data) {
       </div>
       <div class="form-field"><label>Título</label><input name="title" value="${esc(editing?.title || '')}" placeholder="-15% en tu primera aplicación de poligel"></div>
       <div class="form-field"><label>Nota</label><input name="note" value="${esc(editing?.note || '')}" placeholder="Cupo limitado, menciona la promo al confirmar..."></div>
+      <div class="form-field">
+        <label>Imagen de la promoción (opcional)</label>
+        <input type="file" accept="image/png,image/jpeg,image/webp" data-promo-image-input>
+      </div>
+      ${(state.admin.promoImageDraft || editing?.imageUrl) ? `<div class="staff-photo-preview">
+        <img src="${esc(state.admin.promoImageDraft || editing.imageUrl)}" alt="">
+        <button type="button" class="thumb-remove" data-remove-promo-image>×</button>
+      </div>` : ''}
+      <input type="hidden" name="imageUrl" value="${esc(state.admin.promoImageDraft || editing?.imageUrl || '')}">
       <div class="form-grid two-col">
         <div class="form-field"><label>Tipo</label><select name="type">
           <option value="percent" ${(!editing || editing.type === 'percent') ? 'selected' : ''}>Porcentaje %</option>
@@ -2060,6 +2291,7 @@ function adminClientProfile(c) {
         <div class="eyebrow">HISTORIAL DE CITAS</div>
         ${history.length ? history.map(appointmentMiniCard).join('') : `<div class="empty">Sin historial de citas.</div>`}
       </div>
+      ${clientPhotosSection(c.id)}
     </div>
   </div>`;
 }
@@ -2233,6 +2465,232 @@ async function disconnectGoogleCalendar() {
   }
 }
 
+
+// ===== STAFF (EQUIPO) — admin screen =====
+function adminStaff(data) {
+  const team = data?.staff || [];
+  const editing = state.admin.editingStaffId ? team.find(m => m.id === state.admin.editingStaffId) : null;
+  const photo = state.admin.staffPhotoDraft || editing?.photoUrl || '';
+  const uploading = state.admin.staffUploading;
+
+  return `<div class="card-list">
+    <form class="card" data-staff-form="${editing ? esc(editing.id) : ''}">
+      <div class="eyebrow">${editing ? 'EDITAR MIEMBRO' : 'NUEVO MIEMBRO DEL EQUIPO'}</div>
+      <div class="form-grid two-col">
+        <div class="form-field"><label>Nombre</label><input name="name" value="${esc(editing?.name || '')}" placeholder="Ana García" required></div>
+        <div class="form-field"><label>Puesto</label><input name="role" value="${esc(editing?.role || '')}" placeholder="Nail Artist Senior"></div>
+      </div>
+      <div class="form-field"><label>Bio corta</label><textarea name="bio" rows="3" placeholder="Especialista en manicure ruso con 5 años de experiencia...">${esc(editing?.bio || '')}</textarea></div>
+      <div class="form-grid two-col">
+        <div class="form-field"><label>Instagram (URL)</label><input name="instagram" value="${esc(editing?.instagram || '')}" placeholder="https://instagram.com/..."></div>
+        <div class="form-field"><label>Orden</label><input name="sort" type="number" value="${esc(editing?.sort ?? 0)}"></div>
+      </div>
+      <div class="form-field">
+        <label>Foto</label>
+        <input type="file" accept="image/png,image/jpeg,image/webp" data-staff-photo-input ${uploading ? 'disabled' : ''}>
+        ${uploading ? '<div class="field-hint">Subiendo...</div>' : ''}
+      </div>
+      ${photo ? `<div class="staff-photo-preview"><img src="${esc(photo)}" alt=""><button type="button" class="thumb-remove" data-remove-staff-photo>×</button></div>` : ''}
+      <input type="hidden" name="photoUrl" value="${esc(photo)}">
+      <label class="pill-button" style="margin:10px 0"><input type="checkbox" name="active" ${!editing || editing.active ? 'checked' : ''}> Visible en el sitio</label>
+      <div class="row-actions">
+        <button class="btn btn-primary" type="submit">${editing ? 'GUARDAR CAMBIOS' : 'AGREGAR AL EQUIPO'}</button>
+        ${editing ? `<button type="button" class="pill-button" data-cancel-staff-edit>CANCELAR</button>` : ''}
+      </div>
+    </form>
+
+    ${team.length ? team.map(m => `<div class="card staff-row">
+      ${m.photoUrl ? `<img src="${esc(m.photoUrl)}" alt="${esc(m.name)}" class="staff-row-photo">` : `<div class="staff-row-photo staff-row-nophoto">Sin foto</div>`}
+      <div class="staff-row-body">
+        <div class="service-name">${esc(m.name)}${m.active ? '' : ' · <span style="color:var(--muted)">Oculto</span>'}</div>
+        <div class="service-meta">${esc(m.role || 'Sin puesto')}</div>
+        ${m.bio ? `<p class="svc-card-desc">${esc(m.bio)}</p>` : ''}
+        <div class="row-actions">
+          <button class="mini-action" data-edit-staff="${esc(m.id)}">Editar</button>
+          <button class="mini-action" data-toggle-staff="${esc(m.id)}" data-active="${m.active ? '1' : '0'}">${m.active ? 'Ocultar' : 'Mostrar'}</button>
+          <button class="mini-action notif-delete" data-delete-staff="${esc(m.id)}">Eliminar</button>
+        </div>
+      </div>
+    </div>`).join('') : `<div class="empty">Aún no hay miembros del equipo.</div>`}
+  </div>`;
+}
+
+async function createOrUpdateStaff(form) {
+  const editingId = form.dataset.staffForm;
+  const fd = new FormData(form);
+  const body = {
+    name: fd.get('name') || '',
+    role: fd.get('role') || '',
+    bio: fd.get('bio') || '',
+    instagram: fd.get('instagram') || '',
+    photoUrl: fd.get('photoUrl') || '',
+    sort: Number(fd.get('sort') || 0),
+    active: fd.get('active') === 'on'
+  };
+  try {
+    if (editingId) await api(`/api/admin/staff/${encodeURIComponent(editingId)}`, { method: 'PATCH', body });
+    else await api('/api/admin/staff', { method: 'POST', body });
+    state.admin.editingStaffId = null;
+    state.admin.staffPhotoDraft = '';
+    await loadAdminDashboard();
+    await refreshPublicConfig();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+async function deleteStaffMember(id) {
+  if (!confirm('¿Eliminar a este miembro del equipo?')) return;
+  try {
+    await api(`/api/admin/staff/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await loadAdminDashboard();
+    await refreshPublicConfig();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+async function toggleStaffActive(id, currentlyActive) {
+  try {
+    await api(`/api/admin/staff/${encodeURIComponent(id)}`, { method: 'PATCH', body: { active: !currentlyActive } });
+    await loadAdminDashboard();
+    await refreshPublicConfig();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+// ===== CLIENT CONSULTATION PHOTOS — admin only =====
+function clientPhotosSection(clientId) {
+  const all = state.admin.data?.clientPhotos || [];
+  const photos = all.filter(p => p.clientId === clientId);
+  const uploading = state.admin.clientPhotoUploading;
+
+  return `<div class="card service-history-card">
+    <div class="section-head compact-head">
+      <div>
+        <div class="title" style="font-size:20px">Fotos de consulta</div>
+        <div class="subtitle">Antes / después / referencia. Privadas — nunca se muestran en el sitio público.</div>
+      </div>
+    </div>
+    <div class="form-grid two-col">
+      <div class="form-field">
+        <label>Subir foto</label>
+        <input type="file" accept="image/png,image/jpeg,image/webp" data-client-photo-input="${esc(clientId)}" ${uploading ? 'disabled' : ''}>
+        ${uploading ? '<div class="field-hint">Subiendo...</div>' : ''}
+      </div>
+      <div class="form-field">
+        <label>Etapa</label>
+        <select id="client-photo-phase">
+          <option value="after">Después</option>
+          <option value="before">Antes</option>
+          <option value="reference">Referencia</option>
+        </select>
+      </div>
+    </div>
+    ${photos.length ? `<div class="client-photo-grid">
+      ${photos.map(p => `<div class="client-photo-item">
+        <img src="${esc(p.url)}" alt="" data-client-photo-view="${esc(p.id)}">
+        <span class="client-photo-phase phase-${esc(p.phase)}">${p.phase === 'before' ? 'Antes' : p.phase === 'reference' ? 'Ref.' : 'Después'}</span>
+        <button class="thumb-remove" data-delete-client-photo="${esc(p.id)}">×</button>
+      </div>`).join('')}
+    </div>` : `<div class="empty">Aún no hay fotos de esta clienta.</div>`}
+  </div>`;
+}
+
+async function uploadClientPhoto(input) {
+  const clientId = input.dataset.clientPhotoInput;
+  const file = input.files?.[0];
+  if (!file) return;
+  const invalid = validateMediaFile(file);
+  if (invalid) { state.admin.error = invalid; input.value = ''; return render(); }
+
+  const phase = document.getElementById('client-photo-phase')?.value || 'after';
+  state.admin.error = '';
+  state.admin.clientPhotoUploading = true;
+  render();
+  try {
+    const url = await uploadAdminImage(file);
+    await api(`/api/admin/clients/${encodeURIComponent(clientId)}/photos`, {
+      method: 'POST',
+      body: { url, phase }
+    });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  state.admin.clientPhotoUploading = false;
+  input.value = '';
+  render();
+}
+
+async function deleteClientPhoto(id) {
+  if (!confirm('¿Eliminar esta foto?')) return;
+  try {
+    await api(`/api/admin/client-photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+// ===== ABOUT US editor =====
+function aboutUsEditor(data) {
+  const draft = state.admin.aboutUsDraft
+    || data?.aboutUs
+    || { title: 'Sobre Nosotros', text: '', images: [] };
+  if (!state.admin.aboutUsDraft) state.admin.aboutUsDraft = JSON.parse(JSON.stringify(draft));
+  const d = state.admin.aboutUsDraft;
+  const uploading = state.admin.aboutUsUploading;
+
+  return `<div class="card">
+    <div class="eyebrow">SOBRE NOSOTROS</div>
+    <div class="subtitle" style="margin-bottom:12px">Texto e imágenes de la sección "Sobre Nosotros" de la página de inicio.</div>
+    <div class="form-field"><label>Título</label><input value="${esc(d.title || '')}" data-about-field="title"></div>
+    <div class="form-field"><label>Texto</label><textarea rows="5" data-about-field="text">${esc(d.text || '')}</textarea></div>
+    <div class="form-field">
+      <label>Agregar imagen (hasta 6)</label>
+      <input type="file" accept="image/png,image/jpeg,image/webp" data-about-image-input ${uploading || (d.images || []).length >= 6 ? 'disabled' : ''}>
+      ${uploading ? '<div class="field-hint">Subiendo...</div>' : ''}
+      ${(d.images || []).length >= 6 ? '<div class="field-hint">Máximo 6 imágenes.</div>' : ''}
+    </div>
+    ${(d.images || []).length ? `<div class="admin-thumb-row">
+      ${d.images.map((url, i) => `<div class="admin-thumb-wrap">
+        <img src="${esc(url)}" alt="" class="admin-thumb">
+        <button type="button" class="thumb-remove" data-remove-about-image="${i}">×</button>
+      </div>`).join('')}
+    </div>` : ''}
+    <button class="btn btn-primary" style="margin-top:12px" data-save-about-us ${state.admin.configSaving ? 'disabled' : ''}>GUARDAR SOBRE NOSOTROS</button>
+  </div>`;
+}
+
+async function saveAboutUs() {
+  const d = state.admin.aboutUsDraft;
+  if (!d) return;
+  state.admin.configSaving = true;
+  state.admin.error = '';
+  state.admin.configSuccess = '';
+  render();
+  try {
+    await api('/api/admin/settings/about-us', {
+      method: 'POST',
+      body: { title: d.title, text: d.text, images: d.images || [] }
+    });
+    await refreshPublicConfig();
+    await loadAdminDashboard();
+    state.admin.configSuccess = '✓ Sobre Nosotros guardado correctamente.';
+    setTimeout(() => { state.admin.configSuccess = ''; render(); }, 4000);
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  state.admin.configSaving = false;
+  render();
+}
+
 function adminConfiguracion(data) {
   const cfg = state.admin.configDraft || state.salonConfig || {};
   const brand = state.config?.brand || {};
@@ -2255,6 +2713,7 @@ function adminConfiguracion(data) {
 
   return `<div class="card-list">
     ${state.admin.configSuccess ? `<div class="success-inline">${esc(state.admin.configSuccess)}</div>` : ''}
+    ${aboutUsEditor(data)}
     <div class="card">
       <div class="eyebrow">MARCA</div>
       <form data-settings-form="brand">
@@ -2285,6 +2744,7 @@ function adminConfiguracion(data) {
           <div class="form-field"><label>URL Instagram</label><input name="instagramUrl" value="${esc(contact.instagramUrl||'')}"></div>
           <div class="form-field"><label>Handle Instagram (@usuario)</label><input name="instagramHandle" value="${esc(contact.instagramHandle||'')}"></div>
           <div class="form-field"><label>URL TikTok</label><input name="tiktokUrl" value="${esc(contact.tiktokUrl||'')}"></div>
+          <div class="form-field"><label>URL Facebook</label><input name="facebookUrl" value="${esc(contact.facebookUrl||'')}"></div>
         </div>
         <button class="btn btn-primary" type="submit" ${saving?'disabled':''}>GUARDAR CONTACTO</button>
       </form>
@@ -2415,6 +2875,10 @@ function render() {
             ? academiaScreen()
             : homeScreen();
   app.innerHTML = `${body}${state.mode !== 'admin' && state.serviceModalId ? serviceDetailModal() : ''}${state.mode !== 'admin' && state.lightbox ? lightboxOverlay() : ''}`;
+  // render() replaced the DOM, so every carousel element is new. Re-arm the
+  // shared ticker so freshly-rendered carousels start cycling from now, rather
+  // than inheriting the phase of an interval that began before this render.
+  startCarouselTicker();
   afterRender();
 }
 
@@ -2509,9 +2973,22 @@ app.addEventListener('click', async event => {
   if (target.dataset.action === 'admin') return goAdmin();
   if (target.dataset.tab) return goClient(target.dataset.tab);
   if (target.dataset.book) return startBooking(target.dataset.book);
-  if (target.dataset.heroSlide !== undefined) {
-    state.heroSlide = Number(target.dataset.heroSlide);
-    return render();
+  // Carousel controls (dots / arrows) — in-place, never a re-render.
+  if (target.dataset.acGo !== undefined) {
+    const el = target.closest('.auto-carousel');
+    if (el) {
+      carouselGo(el, Number(target.dataset.acGo));
+      startCarouselTicker(); // don't auto-advance right after a manual tap
+    }
+    return;
+  }
+  if (target.hasAttribute('data-ac-prev') || target.hasAttribute('data-ac-next')) {
+    const el = target.closest('.auto-carousel');
+    if (el) {
+      carouselAdvance(el, target.hasAttribute('data-ac-next') ? 1 : -1);
+      startCarouselTicker();
+    }
+    return;
   }
   if (target.hasAttribute('data-rebook-lookup')) return lookupRebook();
   if (target.hasAttribute('data-rebook-apply')) return applyRebook();
@@ -2559,6 +3036,55 @@ app.addEventListener('click', async event => {
     return render();
   }
   if (target.hasAttribute('data-save-hero-images')) return saveHeroImages();
+
+  // Staff
+  if (target.dataset.editStaff) {
+    state.admin.editingStaffId = target.dataset.editStaff;
+    state.admin.staffPhotoDraft = '';
+    return render();
+  }
+  if (target.hasAttribute('data-cancel-staff-edit')) {
+    state.admin.editingStaffId = null;
+    state.admin.staffPhotoDraft = '';
+    return render();
+  }
+  if (target.dataset.deleteStaff) return deleteStaffMember(target.dataset.deleteStaff);
+  if (target.dataset.toggleStaff) return toggleStaffActive(target.dataset.toggleStaff, target.dataset.active === '1');
+  if (target.hasAttribute('data-remove-staff-photo')) {
+    state.admin.staffPhotoDraft = '';
+    const editing = (state.admin.data?.staff || []).find(m => m.id === state.admin.editingStaffId);
+    if (editing) editing.photoUrl = '';
+    return render();
+  }
+
+  // Client consultation photos
+  if (target.dataset.deleteClientPhoto) return deleteClientPhoto(target.dataset.deleteClientPhoto);
+  if (target.dataset.aboutLightbox !== undefined) {
+    const imgs = state.aboutImagesCache || [];
+    const i = Number(target.dataset.aboutLightbox);
+    if (imgs.length) openLightbox(imgs.map(url => ({ url, kind: 'image', title: '' })), i);
+    return;
+  }
+  if (target.dataset.clientPhotoView) {
+    const photos = (state.admin.data?.clientPhotos || []);
+    const idx = photos.findIndex(p => p.id === target.dataset.clientPhotoView);
+    if (idx !== -1) openLightbox(photos.map(p => ({ url: p.url, kind: 'image', title: p.note || '' })), idx);
+    return;
+  }
+
+  // About Us
+  if (target.dataset.removeAboutImage !== undefined) {
+    const i = Number(target.dataset.removeAboutImage);
+    if (state.admin.aboutUsDraft) state.admin.aboutUsDraft.images.splice(i, 1);
+    return render();
+  }
+  if (target.hasAttribute('data-save-about-us')) return saveAboutUs();
+  if (target.hasAttribute('data-remove-promo-image')) {
+    state.admin.promoImageDraft = '';
+    const editing = (state.admin.data?.promotions || []).find(p => p.id === state.admin.editingPromoId);
+    if (editing) editing.imageUrl = '';
+    return render();
+  }
   if (target.dataset.markNotification) return markNotificationRead(target.dataset.markNotification);
   if (target.hasAttribute('data-mark-all-notifications')) return markAllNotificationsRead();
   if (target.hasAttribute('data-clear-all-notifications')) return clearAllNotifications();
@@ -2698,6 +3224,7 @@ app.addEventListener('input', event => {
   if (el.dataset.field) state.booking[el.dataset.field] = el.value;
   if (el.dataset.adminField) state.admin[el.dataset.adminField] = el.value;
   if (el.dataset.mbField && state.admin.manualBooking) state.admin.manualBooking[el.dataset.mbField] = el.value;
+  if (el.dataset.aboutField && state.admin.aboutUsDraft) state.admin.aboutUsDraft[el.dataset.aboutField] = el.value;
   if (el.dataset.academiaField) state.academia[el.dataset.academiaField] = el.value;
   if (el.hasAttribute('data-rebook-whatsapp')) state.booking.rebook.whatsapp = el.value;
   if (el.hasAttribute('data-admin-clients-search')) {
@@ -2746,6 +3273,61 @@ app.addEventListener('change', async event => {
   if (el.matches('[data-multi-upload-input]')) {
     return handleMultiUploadFiles(el);
   }
+  if (el.matches('[data-staff-photo-input]')) {
+    const file = el.files?.[0];
+    if (!file) return;
+    const invalid = validateMediaFile(file);
+    if (invalid) { state.admin.error = invalid; el.value = ''; return render(); }
+    state.admin.error = '';
+    state.admin.staffUploading = true;
+    render();
+    try {
+      state.admin.staffPhotoDraft = await uploadAdminImage(file);
+    } catch (err) {
+      state.admin.error = `No se pudo subir la foto: ${err.message}`;
+    }
+    state.admin.staffUploading = false;
+    el.value = '';
+    return render();
+  }
+  if (el.dataset.clientPhotoInput !== undefined) {
+    return uploadClientPhoto(el);
+  }
+  if (el.matches('[data-promo-image-input]')) {
+    const file = el.files?.[0];
+    if (!file) return;
+    const invalid = validateMediaFile(file);
+    if (invalid) { state.admin.error = invalid; el.value = ''; return render(); }
+    state.admin.error = '';
+    render();
+    try {
+      state.admin.promoImageDraft = await uploadAdminImage(file);
+    } catch (err) {
+      state.admin.error = `No se pudo subir la imagen: ${err.message}`;
+    }
+    el.value = '';
+    return render();
+  }
+  if (el.matches('[data-about-image-input]')) {
+    const file = el.files?.[0];
+    if (!file) return;
+    const invalid = validateMediaFile(file);
+    if (invalid) { state.admin.error = invalid; el.value = ''; return render(); }
+    if (!state.admin.aboutUsDraft) state.admin.aboutUsDraft = { title: 'Sobre Nosotros', text: '', images: [] };
+    if (!Array.isArray(state.admin.aboutUsDraft.images)) state.admin.aboutUsDraft.images = [];
+    state.admin.error = '';
+    state.admin.aboutUsUploading = true;
+    render();
+    try {
+      const url = await uploadAdminImage(file);
+      state.admin.aboutUsDraft.images.push(url);
+    } catch (err) {
+      state.admin.error = `No se pudo subir la imagen: ${err.message}`;
+    }
+    state.admin.aboutUsUploading = false;
+    el.value = '';
+    return render();
+  }
   if (el.dataset.heroImgFile !== undefined) {
     const idx = Number(el.dataset.heroImgFile);
     const file = el.files?.[0];
@@ -2778,6 +3360,10 @@ app.addEventListener('change', async event => {
 });
 
 app.addEventListener('submit', event => {
+  if (event.target.matches('[data-staff-form]')) {
+    event.preventDefault();
+    return createOrUpdateStaff(event.target);
+  }
   const postForm = event.target.closest('[data-post-form]');
   if (postForm) {
     event.preventDefault();
@@ -2845,39 +3431,9 @@ loadInitial().catch(err => {
   app.innerHTML = `<div class="loading-card">Error: ${esc(err.message)}</div>`;
 });
 
-// Auto-advance hero carousel
-setInterval(() => {
-  const heroImages = (state.salonConfig?.heroImages || []).filter(h => h.url);
-  if (heroImages.length > 1 && state.mode === 'client' && state.tab === 'inicio') {
-    state.heroSlide = (state.heroSlide + 1) % heroImages.length;
-    render();
-  }
-}, 4000);
+// (Hero auto-advance now runs on the shared auto-carousel ticker above.)
 
-// Cycle service card images on hover (live DOM, no re-render needed)
-document.addEventListener('mouseenter', event => {
-  const thumb = event.target.closest?.('.service-thumb-multi');
-  if (!thumb || thumb._cycling) return;
-  const imgs = [...thumb.querySelectorAll('.svc-img')];
-  const dots = [...thumb.querySelectorAll('.svc-img-dots span')];
-  if (imgs.length < 2) return;
-  let idx = 0;
-  thumb._cycling = setInterval(() => {
-    imgs[idx].classList.remove('active');
-    if (dots[idx]) dots[idx].classList.remove('active');
-    idx = (idx + 1) % imgs.length;
-    imgs[idx].classList.add('active');
-    if (dots[idx]) dots[idx].classList.add('active');
-  }, 1200);
-}, true);
-
-document.addEventListener('mouseleave', event => {
-  const thumb = event.target.closest?.('.service-thumb-multi');
-  if (!thumb || !thumb._cycling) return;
-  clearInterval(thumb._cycling);
-  thumb._cycling = null;
-  const imgs = [...thumb.querySelectorAll('.svc-img')];
-  const dots = [...thumb.querySelectorAll('.svc-img-dots span')];
-  imgs.forEach((img, i) => { img.classList.toggle('active', i === 0); });
-  dots.forEach((d, i) => { d.classList.toggle('active', i === 0); });
-}, true);
+// (The old hover-based image cycler was removed: it targeted `.service-thumb-multi`,
+// a class the Story 7 card redesign renamed, so it had silently stopped working —
+// and hover doesn't exist on a phone anyway. All carousels now run on the shared
+// auto-carousel engine, which works on touch and desktop alike.)

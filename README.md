@@ -2,7 +2,7 @@
 
 This is a runnable functional MVP built from the uploaded Black Rococo HTML handoff.
 
-**Quick links:** [`ARCHITECTURE.md`](ARCHITECTURE.md) — what to edit for any given fix/feature · [`docs/SAAS_DEPLOYMENT.md`](docs/SAAS_DEPLOYMENT.md) — deploying as multi-tenant SaaS · [`docs/INVESTOR_DEMO.md`](docs/INVESTOR_DEMO.md) — demo script and pitch talking points
+**Quick links:** [`ARCHITECTURE.md`](ARCHITECTURE.md) — what to edit for any given fix/feature · [`docs/INVESTOR_DEMO.md`](docs/INVESTOR_DEMO.md) — demo script and pitch talking points
 
 It includes:
 
@@ -88,13 +88,12 @@ black_rococo_functional_site/
 ├── scripts/
 │   ├── seed-services.js         # Starter service catalog for a new salon
 │   └── create-admin.js          # Provision a salon's admin login
-├── sql/schema.sql               # Full multi-tenant Postgres schema (RLS, constraints)
+├── sql/schema.sql               # Postgres schema (constraints, unique slot index)
 ├── public/
 │   ├── index.html, styles.css, app.js   # Client + admin single-page app
 │   ├── uploads/                          # Local-mode uploaded files
 │   ├── robots.txt, sitemap.xml
 └── docs/
-    ├── SAAS_DEPLOYMENT.md        # Step-by-step multi-tenant deployment guide
     ├── INVESTOR_DEMO.md          # Pitch framing + demo script
     └── INTEGRATIONS.md           # Webhook/automation integration notes
 ```
@@ -115,8 +114,8 @@ The site now adapts automatically by screen size:
 By default (`npm install && npm start`, no env vars) this runs entirely on
 `data/db.json` — zero setup, good for local dev and demos. Setting
 `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` switches the exact same
-codebase to a real, persistent, multi-tenant Postgres backend — see
-[`docs/SAAS_DEPLOYMENT.md`](docs/SAAS_DEPLOYMENT.md) for the full walkthrough
+codebase to a real, persistent Postgres backend — see
+`docs/DEPLOYMENT.md` for the full walkthrough
 and [`sql/schema.sql`](sql/schema.sql) for the schema.
 
 ## Client CRM and profile history
@@ -208,14 +207,14 @@ Courses now support **multiple photos**. In **Admin → ACADEMIA**, upload sever
 
 All images (service photos, course photos, gallery images) use fixed aspect-ratio containers with `object-fit: cover`, so any uploaded photo — portrait, landscape, or square — is automatically cropped and sized consistently without distorting or breaking the layout.
 
-## Multi-tenant SaaS mode (Supabase-backed)
+## Production mode (Supabase-backed)
 
 This app can run in two modes:
 
 - **Local/demo mode** (default): stores everything in `data/db.json`. No setup needed — this is what you get with `npm install && npm start`.
-- **SaaS mode**: set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as environment variables, and the exact same codebase persists to a real, normalized Postgres database instead. One deployment then serves **any number of salons** — each request resolves which salon it belongs to (subdomain, `?salon=slug` query param, or `X-Salon-Slug` header), with real per-salon admin accounts (hashed passwords, salon-scoped sessions) and a genuine database-level constraint that makes double-booking a slot structurally impossible.
+- **Production mode**: set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` and the same codebase persists to Postgres instead of the local JSON file. This is a **single-salon product**: the one salon is resolved once at boot from `SALON_SLUG`, never per request. Double-booking is made structurally impossible by a database-level partial unique index on `(salon_id, appt_date, appt_time) WHERE status <> 'cancelled'`.
 
-Full step-by-step walkthrough — creating the Supabase project, seeding starter services and admin logins for two salons, deploying to Railway, and a testing checklist — is in **`docs/SAAS_DEPLOYMENT.md`**.
+This is a **single-salon product**. The salon is resolved once at boot from `SALON_SLUG`; no request can select a different one. Run `sql/schema.sql`, then every file in `sql/migrations/` in order, then deploy to Railway with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set.
 
 The schema is in `sql/schema.sql` (fully normalized tables, not a JSON blob — real foreign keys, indexes, and a unique index enforcing the double-booking guarantee). RLS is enabled on every table with no policies granted, so only your server's service-role key can read/write anything.
 

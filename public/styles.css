@@ -149,14 +149,22 @@ img, video { max-width: 100%; height: auto; display: block; }
 }
 .hero-has-image { min-height: 380px; }
 .hero-img-wrap { position: absolute; inset: 0; z-index: 0; }
-.hero-img {
-  width: 100%; height: 100%;
-  object-fit: cover;
-  display: block;
-  transition: opacity .5s ease;
+/* All hero slides live in the DOM at once, stacked. Advancing the carousel
+   toggles `.active`, so the browser crossfades two layers it has already
+   decoded — no DOM teardown, no re-render, no blink, no image re-download. */
+/* superseded by the generic .ac-slide rules below */
+
+/* Respect users who've asked the OS for less motion: snap instead of fade. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-img { transition: none; }
 }
+
+/* The caption text is swapped in place, so give it a gentle fade too. */
+.hero-title,
+.hero-subtitle { transition: opacity .3s ease; }
 .hero-img-overlay {
   position: absolute; inset: 0;
+  z-index: 1;
   background: linear-gradient(180deg, rgba(10,8,6,.1) 0%, rgba(10,8,6,.55) 55%, rgba(10,8,6,.82) 100%);
 }
 .hero-overlay {
@@ -187,25 +195,6 @@ img, video { max-width: 100%; height: auto; display: block; }
   color: rgba(242,236,223,.8);
   text-shadow: 0 1px 6px rgba(0,0,0,.3);
 }
-.hero-nav {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 6px;
-  z-index: 3;
-}
-.hero-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255,255,255,.4);
-  cursor: pointer;
-  padding: 0;
-  transition: background .25s;
-}
-.hero-dot.active { background: #fff; }
 
 .hero-art {
   position: absolute; inset: 0;
@@ -335,32 +324,9 @@ img, video { max-width: 100%; height: auto; display: block; }
   background: linear-gradient(135deg, #f2eadb, #d8c49c 44%, #3a3128 110%);
   min-height: 160px;
 }
-.svc-card-img img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  position: absolute;
-  inset: 0;
-  display: none;
-}
-.svc-card-img img.active { display: block; }
 .svc-card-img-placeholder {
   background: linear-gradient(135deg, #eee5d4, #c4a875 60%, #4a3d2e);
 }
-.svc-card-img .svc-img-dots {
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-}
-.svc-img-dots span {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.45);
-}
-.svc-img-dots span.active { background: #fff; }
 .svc-card-body {
   padding: 14px 16px;
   display: flex;
@@ -926,9 +892,6 @@ img, video { max-width: 100%; height: auto; display: block; }
 /* ===== SERVICE THUMB (multi-image) ===== */
 .service-thumb { width:100%; aspect-ratio:16/9; overflow:hidden; border-radius: var(--radius-md); margin-bottom:10px; background: linear-gradient(135deg, #f2eadb, #d8c49c 44%, #3a3128 110%); }
 .service-thumb img { width:100%; height:100%; object-fit: cover; display: block; }
-.service-thumb-multi { position: relative; }
-.service-thumb-multi .svc-img { width:100%; height:200px; object-fit: cover; display:none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
-.service-thumb-multi .svc-img.active { display: block; }
 
 /* ===== COURSE CAROUSEL ===== */
 .carousel-frame { position: relative; width:100%; aspect-ratio: 4/3; border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 10px; background: linear-gradient(135deg, #f2eadb, #d8c49c 44%, #3a3128 110%); }
@@ -1191,25 +1154,6 @@ input[data-admin-clients-search] { width: 100%; box-sizing: border-box; }
 }
 
 /* ===== TOP SWITCH (hidden from clients, shown only in admin via hash) ===== */
-.top-switch {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 16px;
-  background: rgba(251,248,242,.92);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(176,141,87,.25);
-}
-.demo-label {
-  font-size: 10px;
-  letter-spacing: 3px;
-  color: var(--muted);
-  text-transform: uppercase;
-}
 
 /* ==========================================================
    ADMIN EXPERIENCE EPIC — P0 Stories CSS
@@ -1579,3 +1523,306 @@ img.img-broken::after {
   text-align: center;
   padding: 6px;
 }
+
+/* ==========================================================
+   FOUR NEW MEDIA SURFACES — staff, client photos, promos, about
+   ========================================================== */
+
+/* ===== Public: Team ("Nuestro Equipo") ===== */
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+.team-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 14px;
+  text-align: center;
+  transition: box-shadow var(--transition), transform var(--transition);
+}
+.team-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.team-photo {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 12px;
+  border: 2px solid var(--border-strong);
+  display: block;
+}
+.team-photo-empty {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f2eadb, #d8c49c 60%, #3a3128);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 600;
+}
+.team-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+.team-role {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold-text);
+  margin-top: 4px;
+  font-weight: 500;
+}
+.team-bio {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 10px 0 0;
+}
+.team-ig {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold-text);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-strong);
+  padding-bottom: 2px;
+}
+
+/* ===== Public: About Us image grid ===== */
+.about-image-grid {
+  display: grid;
+  gap: 8px;
+  margin: 22px 0;
+  grid-template-columns: repeat(2, 1fr);
+}
+.about-image-grid.about-count-1 { grid-template-columns: 1fr; }
+.about-image-grid.about-count-3 { grid-template-columns: repeat(3, 1fr); }
+.about-image-grid img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.about-image-grid img:hover { transform: scale(1.02); box-shadow: var(--shadow-md); }
+
+/* ===== Admin: staff rows ===== */
+.staff-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.staff-row-photo {
+  width: 84px;
+  height: 84px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+.staff-row-nophoto {
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-align: center;
+}
+.staff-row-body { display: grid; gap: 4px; }
+
+/* Shared preview thumb for staff + promo images */
+.staff-photo-preview {
+  position: relative;
+  display: inline-block;
+  margin: 8px 0;
+}
+.staff-photo-preview img {
+  width: 110px;
+  height: 110px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+/* ===== Admin: client consultation photos ===== */
+.client-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.client-photo-item {
+  position: relative;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.client-photo-item img {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  cursor: pointer;
+  display: block;
+}
+.client-photo-phase {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 3px;
+  color: #fff;
+  background: rgba(0, 0, 0, .62);
+}
+.client-photo-phase.phase-before { background: rgba(142, 34, 55, .82); }
+.client-photo-phase.phase-after { background: rgba(55, 122, 76, .82); }
+.client-photo-phase.phase-reference { background: rgba(176, 141, 87, .88); }
+
+/* ===== Responsive ===== */
+@media (min-width: 560px) {
+  .team-grid { grid-template-columns: repeat(3, 1fr); }
+  .about-image-grid img { height: 180px; }
+}
+@media (min-width: 900px) {
+  .team-grid { grid-template-columns: repeat(4, 1fr); }
+  .team-photo { width: 110px; height: 110px; }
+  .about-image-grid img { height: 220px; }
+}
+@media (max-width: 359px) {
+  .team-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================
+   AUTO-CAROUSEL ENGINE
+   Every slide is in the DOM at once and stacked; advancing
+   toggles `.active`, so the browser crossfades two already-
+   decoded layers. No re-render, no blink, no re-download —
+   and images 2+ are reachable on touch without any hover.
+   ========================================================== */
+.auto-carousel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+/* Fill the parent (service card thumb, modal header, hero). */
+.auto-carousel.ac-fill { position: absolute; inset: 0; }
+
+.ac-viewport {
+  position: absolute;
+  inset: 0;
+}
+.ac-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity .7s ease-in-out;
+  will-change: opacity;
+}
+.ac-slide.active { opacity: 1; }
+
+/* Users who asked the OS for less motion get a snap, not a fade. */
+@media (prefers-reduced-motion: reduce) {
+  .ac-slide { transition: none; }
+}
+
+/* ----- Dots ----- */
+.ac-dots {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+  z-index: 3;
+}
+.ac-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .5);
+  cursor: pointer;
+  transition: background .25s, transform .25s;
+  /* Small visual dot, but a finger-sized tap target. */
+  position: relative;
+}
+.ac-dot::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.ac-dot.active {
+  background: #fff;
+  transform: scale(1.25);
+}
+
+/* ----- Arrows (modal) ----- */
+.ac-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .88);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  z-index: 4;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+  transition: background .2s, transform .2s;
+}
+.ac-arrow:hover { background: #fff; transform: translateY(-50%) scale(1.06); }
+.ac-arrow:active { transform: translateY(-50%) scale(.94); }
+.ac-prev { left: 10px; }
+.ac-next { right: 10px; }
+
+/* ----- Counter ("2 / 3") ----- */
+.ac-counter {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+}
+
+/* Service card thumbs are small: shrink the dots so they don't dominate. */
+.svc-card-img .ac-dots { bottom: 6px; gap: 4px; }
+.svc-card-img .ac-dot { width: 5px; height: 5px; }
+
+/* Featured cards: keep the caption above the dots. */
+.carousel-service-card .ac-dots { bottom: 62px; }
+
+/* Modal header keeps its rounded top corners. */
+.modal-image .auto-carousel { border-radius: 18px 18px 0 0; }
+
+/* The hero owns its own stacking context; the gradient overlay sits above. */
+.hero-carousel { z-index: 0; }
+.hero .hero-img-overlay { z-index: 1; }
