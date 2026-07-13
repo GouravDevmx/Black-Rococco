@@ -180,7 +180,7 @@ async function startServer() {
   setInterval(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 10 * 60 * 1000);
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Black Rococo MVP running on port ${PORT}`);
+    console.log(`Black Rococo running on port ${PORT}`);
     console.log(`Admin login: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
     console.log(`Reminder checks: ${CLIENT_REMINDER_HOURS.join(', ')} hours before appointment`);
   });

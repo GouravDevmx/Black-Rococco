@@ -64,7 +64,14 @@ const state = {
     googleCalendar: null,
     configDraft: null,
     configSaving: false,
+    configSuccess: '',
     clientSearch: '',
+    agendaView: 'daily',
+    weeklyAppointments: [],
+    manualBooking: null,
+    multiUploadFiles: [],
+    multiUploadProgress: 0,
+    multiUploading: false,
     data: null,
     error: ''
   },
@@ -119,6 +126,16 @@ function splitBrand(name) {
   return [parts[0], parts.slice(1).join(' ')];
 }
 
+function socialIconSvg(platform) {
+  const icons = {
+    instagram: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg>',
+    whatsapp: '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>',
+    tiktok: '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46V13.2a8.16 8.16 0 005.58 2.17V12a4.85 4.85 0 01-3.59-1.64V6.69h3.59z"/></svg>',
+    facebook: '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>'
+  };
+  return icons[platform] || '';
+}
+
 function serviceById(id) {
   return state.services.find(s => s.id === id);
 }
@@ -131,6 +148,19 @@ function formatDate(value) {
   if (!value) return 'Sin fecha';
   const date = new Date(`${value}T12:00:00`);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-MX', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatTimeAgo(date) {
+  const now = Date.now();
+  const diff = now - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Ahora';
+  if (mins < 60) return `Hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Hace ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Hace ${days}d`;
+  return `Hace ${Math.floor(days / 7)} sem`;
 }
 
 function profileSummary(c = {}) {
@@ -366,6 +396,148 @@ async function markNotificationRead(id) {
 async function markAllNotificationsRead() {
   try {
     await api('/api/admin/notifications/read-all', { method: 'POST' });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+async function clearAllNotifications() {
+  if (!confirm('¿Eliminar todas las notificaciones?')) return;
+  try {
+    await api('/api/admin/notifications/clear-all', { method: 'POST' });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+async function deleteNotification(id) {
+  try {
+    await api(`/api/admin/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await loadAdminDashboard();
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+async function loadWeeklyAppointments() {
+  const today = new Date();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  const start = startOfWeek.toISOString().slice(0, 10);
+  const end = endOfWeek.toISOString().slice(0, 10);
+  try {
+    const data = await api(`/api/admin/appointments/range?start=${start}&end=${end}`);
+    state.admin.weeklyAppointments = data.appointments || [];
+  } catch (err) {
+    state.admin.error = err.message;
+  }
+  render();
+}
+
+function openManualBooking() {
+  state.admin.manualBooking = {
+    open: true,
+    name: '',
+    whatsapp: '',
+    serviceId: '',
+    date: todayLocal(),
+    time: '',
+    notes: '',
+    error: '',
+    success: '',
+    saving: false
+  };
+  render();
+}
+
+async function submitManualBooking() {
+  const mb = state.admin.manualBooking;
+  if (!mb) return;
+  mb.error = '';
+  mb.success = '';
+  mb.saving = true;
+  render();
+  try {
+    const data = await api('/api/admin/bookings', {
+      method: 'POST',
+      body: {
+        serviceId: mb.serviceId,
+        date: mb.date,
+        time: mb.time,
+        name: mb.name,
+        whatsapp: mb.whatsapp,
+        notes: mb.notes
+      }
+    });
+    mb.success = `${data.appointment.folio} — ${data.appointment.serviceName} ${data.appointment.date} ${data.appointment.time}`;
+    mb.saving = false;
+    await loadAdminDashboard();
+    if (state.admin.agendaView === 'weekly') loadWeeklyAppointments();
+  } catch (err) {
+    mb.error = err.message;
+    mb.saving = false;
+  }
+  render();
+}
+
+async function handleMultiUploadFiles(input) {
+  const files = [...(input.files || [])];
+  if (!files.length) return;
+  state.admin.multiUploading = true;
+  state.admin.multiUploadProgress = 0;
+  state.admin.multiUploadFiles = files.map(f => ({ name: f.name, file: f, status: 'pending', url: '' }));
+  render();
+  let completed = 0;
+  for (const item of state.admin.multiUploadFiles) {
+    try {
+      item.status = 'uploading';
+      render();
+      const uploaded = await uploadAdminMediaFile(item.file);
+      item.url = uploaded.url;
+      item.kind = uploaded.kind;
+      item.status = 'done';
+    } catch (err) {
+      item.status = 'error';
+      item.error = err.message;
+    }
+    completed++;
+    state.admin.multiUploadProgress = Math.round((completed / files.length) * 100);
+    render();
+  }
+  state.admin.multiUploading = false;
+  input.value = '';
+  render();
+}
+
+async function saveMultiUploadToGallery(category) {
+  const items = state.admin.multiUploadFiles.filter(f => f.status === 'done' && f.url);
+  if (!items.length) return;
+  try {
+    for (const item of items) {
+      await api('/api/admin/media', {
+        method: 'POST',
+        body: {
+          url: item.url,
+          kind: item.kind || 'image',
+          title: '',
+          description: '',
+          category: category || '',
+          order: 0,
+          showInCarousel: false,
+          showInGallery: true
+        }
+      });
+    }
+    state.admin.multiUploadFiles = [];
+    state.admin.multiUploadProgress = 0;
+    await refreshPublicConfig();
     await loadAdminDashboard();
   } catch (err) {
     state.admin.error = err.message;
@@ -921,19 +1093,18 @@ function serviceDetailModal() {
 function serviceButton(s, detailed = false) {
   if (detailed) {
     const imgs = (s.imageUrls && s.imageUrls.length) ? s.imageUrls : (s.imageUrl ? [s.imageUrl] : []);
-    return `<div class="card service-detail" data-view-service="${esc(s.id)}">
-      ${imgs.length ? `<div class="service-thumb service-thumb-multi">
+    return `<div class="card svc-card-redesign" data-view-service="${esc(s.id)}">
+      ${imgs.length ? `<div class="svc-card-img">
         ${imgs.map((url, i) => `<img src="${esc(url)}" alt="${esc(s.name)}" loading="lazy" class="svc-img ${i === 0 ? 'active' : ''}" data-svc-img-idx="${i}">`).join('')}
         ${imgs.length > 1 ? `<div class="svc-img-dots">${imgs.map((_,i)=>`<span class="${i===0?'active':''}"></span>`).join('')}</div>` : ''}
-      </div>` : ''}
-      <div class="top">
-        <div>
-          <div class="service-name">${esc(s.name)}</div>
-          <div class="service-meta">${esc(s.dur)} min · <span class="link-hint">Ver detalles</span></div>
-        </div>
-        <div class="price">${priceDisplay(s)}</div>
+      </div>` : `<div class="svc-card-img svc-card-img-placeholder"></div>`}
+      <div class="svc-card-body">
+        <div class="svc-card-name">${esc(s.name)}</div>
+        <p class="svc-card-desc">${esc(s.desc)}</p>
+        <div class="svc-card-meta">${esc(s.dur)} min</div>
+        <div class="svc-card-price">${priceDisplay(s)}</div>
+        <button class="btn btn-primary btn-small svc-card-cta" data-book="${esc(s.id)}">AGENDAR</button>
       </div>
-      <button class="btn btn-outline btn-small" data-book="${esc(s.id)}">RESERVAR</button>
     </div>`;
   }
   return `<button class="card service-card" data-book="${esc(s.id)}">
@@ -947,14 +1118,28 @@ function serviceButton(s, detailed = false) {
 
 function homeScreen() {
   const c = state.config;
-  const openSlots = Math.max(0, (state.booking.slots.length ? state.booking.slots : (c.booking.times||[]).map(() => ({ busy: false }))).filter(s => !s.busy).length);
   const carouselMedia = (state.media?.carousel || []).slice(0, 10);
   const heroImages = (state.salonConfig?.heroImages || []).filter(h => h.url);
   const heroSlide = Math.min(state.heroSlide || 0, Math.max(0, heroImages.length - 1));
   const heroItem = heroImages[heroSlide] || null;
   state.homeCarouselCache = carouselMedia;
+
+  // Social links
+  const whatsappNum = (c.contact?.whatsappNumber || '').replace(/\D/g, '') || '5213326553522';
+  const socialLinks = [
+    { name: 'Instagram', url: c.contact.instagramUrl, icon: socialIconSvg('instagram') },
+    { name: 'WhatsApp', url: `https://api.whatsapp.com/send/?phone=${whatsappNum}`, icon: socialIconSvg('whatsapp') },
+    { name: 'TikTok', url: c.contact.tiktokUrl, icon: socialIconSvg('tiktok') },
+    { name: 'Facebook', url: c.contact.facebookUrl || 'https://www.facebook.com/blackrococomx/', icon: socialIconSvg('facebook') }
+  ].filter(l => l.url);
+
+  // Google Maps embed URL
+  const mapsEmbedSrc = 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3732.5!2d-103.4408!3d20.7105!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2sCalzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan!5e0!3m2!1ses!2smx';
+
   return `<section class="screen">
     ${brandHeader()}
+
+    <!-- 1. HERO -->
     <div class="hero ${heroImages.length ? 'hero-has-image' : ''}">
       ${heroImages.length
         ? `<div class="hero-img-wrap">
@@ -972,9 +1157,34 @@ function homeScreen() {
     </div>
     <div class="section-tight cta-row">
       <button class="btn btn-primary" data-tab="reservar">RESERVA TU CITA</button>
-      <div class="fomo"><span class="dot"></span><span>${openSlots} horarios libres hoy — la agenda se llena rápido</span></div>
     </div>
     <div class="specialties"><span class="line"></span><div class="eyebrow">ESPECIALISTAS EN<br><span>${esc(c.brand.specialties)}</span></div><span class="line"></span></div>
+
+    <!-- 2. SERVICES (Featured carousel + all services link) -->
+    <div class="section">
+      <div class="section-head"><div><div class="title">Servicios destacados</div><div class="subtitle">Los favoritos de nuestras clientas</div></div></div>
+      ${featuredServicesCarousel()}
+      <button class="btn btn-outline" style="margin-top:12px" data-tab="servicios">VER TODOS LOS SERVICIOS</button>
+    </div>
+
+    ${promoBanner()}
+
+    <!-- 3. ABOUT US -->
+    <div class="section about-section">
+      <div class="about-inner">
+        <div class="about-eyebrow">SOBRE NOSOTROS</div>
+        <div class="about-title">${esc(c.brand.name || 'Black Rococo')}</div>
+        <div class="about-rule"></div>
+        <p class="about-text">Somos un estudio profesional de uñas en Ciudad Granja, Zapopan. Nos especializamos en manicure ruso, poligel, rubber base, gelish y pedicure spa. Cada servicio está diseñado para ofrecer resultados impecables en un ambiente cálido y exclusivo. Tu satisfacción y bienestar son nuestra prioridad.</p>
+        <div class="about-stats">
+          <div><span class="about-stat-number">${esc(c.brand.rating || '4.9')}</span><span class="about-stat-label">Calificación</span></div>
+          <div><span class="about-stat-number">+500</span><span class="about-stat-label">Clientas felices</span></div>
+          <div><span class="about-stat-number">6</span><span class="about-stat-label">Años de experiencia</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. GALLERY -->
     <div class="section">
       <div class="section-head"><div class="title">Resultados reales</div><button class="pill-button" data-tab="galeria">VER GALERÍA →</button></div>
       <div class="carousel">
@@ -983,30 +1193,42 @@ function homeScreen() {
           : `<div class="image-card"><div class="placeholder">Aún no hay fotos<br>sube fotos reales en Admin → GALERÍA</div></div>`}
       </div>
     </div>
-    <div class="section">
-      <div class="section-head"><div><div class="title">Servicios destacados</div><div class="subtitle">Los favoritos de nuestras clientas</div></div></div>
-      ${featuredServicesCarousel()}
-      <button class="btn btn-outline" style="margin-top:12px" data-tab="servicios">VER TODOS LOS SERVICIOS</button>
-    </div>
-    <div class="section" style="text-align:center">
-      <div class="eyebrow" style="padding-bottom:14px">SÍGUENOS</div>
-      <div class="pill-row" style="justify-content:center">
-        <a class="pill-button" target="_blank" rel="noopener" href="${esc(c.contact.instagramUrl)}">INSTAGRAM</a>
-        <a class="pill-button" target="_blank" rel="noopener" href="${esc(c.contact.tiktokUrl)}">TIKTOK</a>
-      </div>
-    </div>
-    ${promoBanner()}
+
     ${(state.courses || []).length ? `<div class="section"><div class="card promo-card" style="border-color:var(--gold, #b08d57)"><div class="eyebrow">BLACK ROCOCO ACADEMY</div><div class="title" style="font-size:22px;margin:6px 0">Cursos y talleres profesionales</div><div class="subtitle">Certifícate en poligel, manicure ruso y más.</div><button class="btn btn-outline" style="margin-top:14px" data-tab="academia">VER CURSOS</button></div></div>` : ''}
-    <div class="section">
-      <div class="card info-grid">
-        <div class="info-line"><strong>Dirección</strong><span>${esc(c.contact.address1)}<br>${esc(c.contact.address2)}</span></div>
-        <div class="info-line"><strong>Horario</strong><span>${esc(c.contact.hours1)}<br>${esc(c.contact.hours2)}</span></div>
-        <div class="pill-row">
-          <a class="pill-button" target="_blank" rel="noopener" href="${esc(c.contact.mapsUrl)}">VER MAPA</a>
-          <a class="pill-button" target="_blank" rel="noopener" href="${esc(whatsappChatUrl())}">WHATSAPP</a>
-        </div>
+
+    <!-- 5. MAP -->
+    <div class="section map-section">
+      <div class="section-head"><div class="title">Ubicación</div></div>
+      <div class="map-address">
+        <p>${esc(c.contact.address1)}${c.contact.address2 ? '<br>' + esc(c.contact.address2) : ''}</p>
+        <p class="map-hours">${esc(c.contact.hours1)}${c.contact.hours2 ? ' · ' + esc(c.contact.hours2) : ''}</p>
+      </div>
+      <div class="map-embed">
+        <iframe
+          src="${mapsEmbedSrc}"
+          width="100%" height="300"
+          style="border:0;border-radius:8px"
+          allowfullscreen=""
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          title="Black Rococo en Google Maps"
+        ></iframe>
+      </div>
+      <div class="map-actions">
+        <a class="btn btn-outline btn-small" target="_blank" rel="noopener" href="${esc(c.contact.mapsUrl)}">ABRIR EN GOOGLE MAPS</a>
+        <a class="btn btn-outline btn-small" target="_blank" rel="noopener" href="${esc(whatsappChatUrl())}">CONTACTAR POR WHATSAPP</a>
       </div>
     </div>
+
+    <!-- 6. SOCIAL -->
+    <div class="section social-section">
+      <div class="social-eyebrow">SÍGUENOS</div>
+      <div class="social-icons-row">
+        ${socialLinks.map(l => `<a class="social-icon-link" href="${esc(l.url)}" target="_blank" rel="noopener" aria-label="${esc(l.name)}">${l.icon}<span class="social-icon-label">${esc(l.name)}</span></a>`).join('')}
+      </div>
+    </div>
+
+    <!-- 7. FOOTER -->
     <div class="footer">${esc(c.brand.footer)}</div>
     ${bottomNav()}
   </section>`;
@@ -1161,9 +1383,6 @@ function galleryScreen() {
   return `<section class="screen">
     ${brandHeader()}
     <div class="page-header"><div class="title">Galería</div><div class="subtitle">Resultados reales de nuestras clientas.</div></div>
-    <div style="padding:0 16px 8px">
-      <input placeholder="Buscar por nombre..." data-gallery-search value="${esc(state.gallerySearch||'')}" style="width:100%;box-sizing:border-box">
-    </div>
     ${categories.length ? `<div class="pill-row" style="padding:0 16px 10px;flex-wrap:wrap">
       <button class="pill-button ${!filter ? 'active' : ''}" data-gallery-filter="">TODAS</button>
       ${categories.map(cat => `<button class="pill-button ${filter === cat ? 'active' : ''}" data-gallery-filter="${esc(cat)}">${esc(cat)}</button>`).join('')}
@@ -1278,7 +1497,10 @@ function adminScreen() {
   return `<section class="admin-screen">
     <div class="admin-panel-head">
       <div><div class="title">Hola, Admin</div><div class="subtitle">Agenda del ${esc(data?.date || '')}</div></div>
-      <button class="pill-button" data-logout>SALIR</button>
+      <div class="pill-row">
+        <button class="pill-button" data-action="client">VER SITIO</button>
+        <button class="pill-button" data-logout>SALIR</button>
+      </div>
     </div>
     <div class="stats">
       <div class="card"><div class="eyebrow">CITAS HOY</div><div class="stat-number">${esc(data?.count || 0)}</div></div>
@@ -1320,19 +1542,106 @@ function adminLoginScreen() {
 
 function adminAgenda(data) {
   const list = data?.appointments || [];
-  return `<div class="card-list">
-    ${list.length ? list.map(a => `<div class="appt-row">
-      <div class="appt-main"><div class="appt-time">${esc(a.time)}</div><button class="status-chip ${esc(a.status)}" data-cycle-status="${esc(a.id)}" data-current-status="${esc(a.status)}">${esc(a.statusLabel)}</button></div>
-      <div class="service-name">${esc(a.clientName)}</div>
-      <div class="service-meta">${esc(a.serviceName)} · ${money(a.servicePrice)} · ${esc(a.clientWhatsapp)}</div>
-      <div class="row-actions">
-        <a class="mini-action" target="_blank" rel="noopener" href="${esc(a.adminWhatsappUrl)}">WhatsApp Admin</a>
-        <a class="mini-action" target="_blank" rel="noopener" href="${esc(a.googleCalendarUrl)}">Google Calendar</a>
-        <a class="mini-action" target="_blank" rel="noopener" href="${esc(a.clientReminderUrl)}">Recordar clienta</a>
-      </div>
-    </div>`).join('') : `<div class="empty">No hay citas para hoy.</div>`}
-  </div>`;
+  const times = state.config?.booking?.times || [];
+  const view = state.admin.agendaView || 'daily';
+  const mb = state.admin.manualBooking;
+
+  // Manual booking form (Story 21)
+  const services = data?.services?.filter(s => s.active) || [];
+  const manualBookingForm = mb?.open ? `<div class="card manual-booking-card">
+    <div class="section-head compact-head"><div><div class="title">Nueva Cita Manual</div><div class="subtitle">Walk-in, llamada o WhatsApp</div></div><button class="pill-button" data-close-manual-booking>CANCELAR</button></div>
+    <div class="form-grid two-col">
+      <div class="form-field"><label>Nombre de clienta</label><input value="${esc(mb.name||'')}" data-mb-field="name" placeholder="Nombre"></div>
+      <div class="form-field"><label>WhatsApp</label><input value="${esc(mb.whatsapp||'')}" data-mb-field="whatsapp" inputmode="tel" placeholder="33 0000 0000"></div>
+    </div>
+    <div class="form-field"><label>Servicio</label><select data-mb-field="serviceId">
+      <option value="">Seleccionar servicio...</option>
+      ${services.map(s => `<option value="${esc(s.id)}" ${mb.serviceId === s.id ? 'selected' : ''}>${esc(s.name)} · ${money(s.price)} · ${s.dur} min</option>`).join('')}
+    </select></div>
+    <div class="form-grid two-col">
+      <div class="form-field"><label>Fecha</label><input type="date" value="${esc(mb.date||todayLocal())}" data-mb-field="date" min="${todayLocal()}"></div>
+      <div class="form-field"><label>Hora</label><select data-mb-field="time">
+        <option value="">Seleccionar hora...</option>
+        ${times.map(t => `<option value="${t}" ${mb.time === t ? 'selected' : ''}>${t}</option>`).join('')}
+      </select></div>
+    </div>
+    <div class="form-field"><label>Notas (opcional)</label><input value="${esc(mb.notes||'')}" data-mb-field="notes" placeholder="Nota interna..."></div>
+    ${mb.error ? `<div class="error-box">${esc(mb.error)}</div>` : ''}
+    ${mb.success ? `<div class="success-inline">✓ Cita creada: ${esc(mb.success)}</div>` : ''}
+    <button class="btn btn-primary" data-confirm-manual-booking ${mb.saving ? 'disabled' : ''}>${mb.saving ? 'GUARDANDO...' : 'CREAR CITA'}</button>
+  </div>` : '';
+
+  if (view === 'weekly') return adminAgendaWeekly(data, list, times) + manualBookingForm;
+
+  // Daily calendar grid view
+  const timeSlots = times.length ? times : ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+  const apptMap = {};
+  list.forEach(a => { apptMap[a.time] = a; });
+
+  return `<div class="agenda-controls">
+    <div class="pill-row">
+      <button class="pill-button ${view === 'daily' ? 'active' : ''}" data-agenda-view="daily">DÍA</button>
+      <button class="pill-button ${view === 'weekly' ? 'active' : ''}" data-agenda-view="weekly">SEMANA</button>
+    </div>
+    <button class="btn btn-primary btn-small" data-open-manual-booking>+ NUEVA CITA</button>
+  </div>
+  <div class="calendar-grid">
+    ${timeSlots.map(time => {
+      const appt = apptMap[time];
+      return `<div class="cal-slot ${appt ? 'cal-booked cal-status-' + esc(appt.status) : 'cal-free'}">
+        <div class="cal-time">${time}</div>
+        ${appt ? `<div class="cal-appt">
+          <div class="cal-client">${esc(appt.clientName)}</div>
+          <div class="cal-service">${esc(appt.serviceName)}</div>
+          <div class="cal-meta">${money(appt.servicePrice)} · <button class="status-chip-sm ${esc(appt.status)}" data-cycle-status="${esc(appt.id)}" data-current-status="${esc(appt.status)}">${esc(appt.statusLabel)}</button></div>
+        </div>` : `<div class="cal-empty">Disponible</div>`}
+      </div>`;
+    }).join('')}
+  </div>
+  ${manualBookingForm}`;
 }
+
+function adminAgendaWeekly(data, list, times) {
+  const weekDays = [];
+  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const today = new Date();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Monday
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startOfWeek);
+    d.setDate(startOfWeek.getDate() + i);
+    const ymd = d.toISOString().slice(0, 10);
+    weekDays.push({ ymd, name: dayNames[d.getDay()], num: d.getDate(), isToday: ymd === todayLocal() });
+  }
+
+  // Load weekly data from cache or show what we have
+  const weekAppts = state.admin.weeklyAppointments || [];
+  const allAppts = [...list, ...weekAppts.filter(wa => !list.find(l => l.id === wa.id))];
+  const timeSlots = times.length ? times.slice(0, 12) : ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
+
+  return `<div class="agenda-controls">
+    <div class="pill-row">
+      <button class="pill-button ${(state.admin.agendaView||'daily') === 'daily' ? 'active' : ''}" data-agenda-view="daily">DÍA</button>
+      <button class="pill-button ${(state.admin.agendaView||'daily') === 'weekly' ? 'active' : ''}" data-agenda-view="weekly">SEMANA</button>
+    </div>
+    <button class="btn btn-primary btn-small" data-open-manual-booking>+ NUEVA CITA</button>
+  </div>
+  <div class="weekly-grid-wrap">
+    <div class="weekly-grid" style="grid-template-columns: 60px repeat(7, 1fr)">
+      <div class="wg-header wg-corner"></div>
+      ${weekDays.map(d => `<div class="wg-header ${d.isToday ? 'wg-today' : ''}">${d.name}<br><b>${d.num}</b></div>`).join('')}
+      ${timeSlots.map(time => {
+        return `<div class="wg-time">${time}</div>` + weekDays.map(d => {
+          const appt = allAppts.find(a => a.date === d.ymd && a.time === time);
+          return `<div class="wg-cell ${appt ? 'wg-booked wg-status-' + esc(appt.status) : ''} ${d.isToday ? 'wg-today-col' : ''}">
+            ${appt ? `<div class="wg-appt-name">${esc(appt.clientName?.split(' ')[0] || '')}</div><div class="wg-appt-svc">${esc(appt.serviceName?.split(' ').slice(0,2).join(' ') || '')}</div>` : ''}
+          </div>`;
+        }).join('');
+      }).join('')}
+    </div>
+  </div>`;}
+
 
 function notificationStatusLabel(status) {
   const labels = {
@@ -1350,11 +1659,17 @@ function adminNotifications(data) {
   const i = data?.integrations || {};
   return `<div class="card-list notifications-list">
     <div class="card integration-card">
-      <div class="section-head compact-head"><div><div class="title">Centro de notificaciones</div><div class="subtitle">Nueva agenda, Google Calendar, WhatsApp Admin y recordatorios de clientas.</div></div>${data?.unreadNotifications ? `<button class="pill-button" data-mark-all-notifications>MARCAR TODO LEÍDO</button>` : ''}</div>
+      <div class="section-head compact-head">
+        <div><div class="title">Centro de notificaciones</div><div class="subtitle">Citas, Google Calendar, WhatsApp y recordatorios.</div></div>
+        <div class="pill-row">
+          ${data?.unreadNotifications ? `<button class="pill-button" data-mark-all-notifications>MARCAR LEÍDAS</button>` : ''}
+          ${list.length ? `<button class="pill-button" style="color:var(--red)" data-clear-all-notifications>LIMPIAR TODO</button>` : ''}
+        </div>
+      </div>
       <div class="integration-grid">
-        <div><b>Google Calendar</b><span>${i.googleCalendarConfigured ? 'Conectado por webhook' : 'Pendiente: GOOGLE_CALENDAR_WEBHOOK_URL'}</span></div>
-        <div><b>WhatsApp Admin</b><span>${i.whatsappAdminConfigured ? 'Conectado por webhook' : 'Pendiente: WHATSAPP_ADMIN_WEBHOOK_URL'}</span></div>
-        <div><b>Recordatorios clienta</b><span>${i.clientReminderConfigured ? `Activo ${esc((i.reminderHours || []).join(', '))} h antes` : 'Pendiente: CLIENT_REMINDER_WEBHOOK_URL'}</span></div>
+        <div><b>Google Calendar</b><span>${i.googleCalendarConfigured ? '✓ Conectado' : '⚠ Pendiente configurar'}</span></div>
+        <div><b>WhatsApp Admin</b><span>${i.whatsappAdminConfigured ? '✓ Conectado' : '⚠ Pendiente configurar'}</span></div>
+        <div><b>Recordatorios</b><span>${i.clientReminderConfigured ? `✓ Activo ${esc((i.reminderHours || []).join(', '))} h antes` : '⚠ Pendiente configurar'}</span></div>
       </div>
     </div>
     ${list.length ? list.map(n => {
@@ -1365,20 +1680,25 @@ function adminNotifications(data) {
           if (multi.whatsapp?.url) actions += `<a class="mini-action" target="_blank" rel="noopener" href="${esc(multi.whatsapp.url)}">${esc(multi.whatsapp.label)}</a>`;
           if (multi.calendar?.url) actions += `<a class="mini-action" target="_blank" rel="noopener" href="${esc(multi.calendar.url)}">${esc(multi.calendar.label)}</a>`;
           if (multi.agenda) actions += `<button class="mini-action" data-admin-tab="agenda">Ver agenda</button>`;
-          if (multi.calendar?.message) actions += `<div class="service-meta" style="margin-top:4px">${esc(multi.calendar.message)}</div>`;
         } catch (_) {
-          actions = n.actionUrl ? `<a class="mini-action" target="_blank" rel="noopener" href="${esc(n.actionUrl)}">${esc(n.actionLabel)}</a>` : '';
+          if (n.actionUrl) actions = `<a class="mini-action" target="_blank" rel="noopener" href="${esc(n.actionUrl)}">${esc(n.actionLabel || 'Abrir')}</a>`;
         }
       } else if (n.actionUrl) {
         actions = `<a class="mini-action" target="_blank" rel="noopener" href="${esc(n.actionUrl)}">${esc(n.actionLabel || 'Abrir')}</a>`;
       }
+      const ts = new Date(n.createdAt);
+      const timeAgo = formatTimeAgo(ts);
       return `<div class="notification-row ${n.unread ? 'unread' : ''}">
-        <div class="notification-top"><div class="service-name">${esc(n.title)}</div><span class="notify-status ${esc(n.status)}">${esc(notificationStatusLabel(n.status))}</span></div>
-        <div class="service-meta">${esc(n.message)}</div>
-        <div class="service-meta" style="opacity:0.6">${new Date(n.createdAt).toLocaleString('es-MX')}</div>
+        <div class="notification-top">
+          <div class="notif-title">${esc(n.title)}</div>
+          <span class="notify-status ${esc(n.status)}">${esc(notificationStatusLabel(n.status))}</span>
+        </div>
+        <div class="notif-message">${esc(n.message)}</div>
+        <div class="notif-time">${timeAgo} · ${ts.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
         <div class="row-actions">
           ${actions}
           ${n.unread ? `<button class="mini-action" data-mark-notification="${esc(n.id)}">Marcar leída</button>` : ''}
+          <button class="mini-action notif-delete" data-delete-notification="${esc(n.id)}">Eliminar</button>
         </div>
         ${n.error ? `<div class="error-box">${esc(n.error)}</div>` : ''}
       </div>`;
@@ -1432,8 +1752,9 @@ function adminServices(data) {
         <div class="price">${money(s.price)}</div>
         <div class="price-stepper"><button class="icon-btn" data-price-step="${esc(s.id)}" data-delta="-10">−</button><button class="icon-btn" data-price-step="${esc(s.id)}" data-delta="10">+</button></div>
       </div>
-      ${s.imageUrl ? `<img src="${esc(s.imageUrl)}" alt="" class="admin-thumb" style="margin-top:8px">` : ''}
+      ${s.imageUrl ? `<div class="admin-thumb-row" style="margin-top:8px">${(s.imageUrls?.length ? s.imageUrls : [s.imageUrl]).filter(Boolean).map(url => `<img src="${esc(url)}" alt="" class="admin-thumb">`).join('')}</div>` : ''}
       <div class="row-actions">
+        ${(s.imageUrls?.length || s.imageUrl) ? `<button class="mini-action" data-view-service-images="${esc(s.id)}">Ver fotos</button>` : ''}
         <button class="mini-action" data-edit-service="${esc(s.id)}">Editar</button>
         <button class="mini-action" data-toggle-featured-service="${esc(s.id)}" data-featured="${featuredIds.includes(s.id) ? '1' : '0'}">${featuredIds.includes(s.id) ? 'Quitar de destacados' : 'Destacar'}</button>
         <button class="mini-action" data-delete-service="${esc(s.id)}">Eliminar</button>
@@ -1665,7 +1986,38 @@ function adminGallery(data) {
   const editing = state.admin.editingMediaId ? media.find(m => m.id === state.admin.editingMediaId) : null;
   const draft = state.admin.mediaDraft;
   const categories = [...new Set(media.map(m => m.category).filter(Boolean))];
+  const multiFiles = state.admin.multiUploadFiles || [];
+  const multiUploading = state.admin.multiUploading;
+
+  // Story 18: Multi-upload section
+  const multiUploadSection = `<div class="card multi-upload-card">
+    <div class="eyebrow">SUBIDA MÚLTIPLE</div>
+    <div class="subtitle" style="margin:6px 0 12px">Selecciona varias fotos a la vez para agregarlas a la galería.</div>
+    <div class="form-field">
+      <label>Seleccionar archivos</label>
+      <input type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" data-multi-upload-input>
+    </div>
+    ${multiFiles.length ? `
+      <div class="multi-preview-grid">
+        ${multiFiles.map((f, i) => `<div class="multi-preview-item ${f.status}">
+          ${f.url ? `<img src="${esc(f.url)}" alt="${esc(f.name)}">` : `<div class="multi-preview-placeholder">${f.status === 'uploading' ? '⏳' : f.status === 'error' ? '✕' : '...'}</div>`}
+          <div class="multi-preview-name">${esc(f.name.slice(0, 20))}</div>
+          <div class="multi-preview-status">${f.status === 'done' ? '✓' : f.status === 'error' ? esc(f.error || 'Error') : f.status === 'uploading' ? 'Subiendo...' : 'Pendiente'}</div>
+        </div>`).join('')}
+      </div>
+      ${multiUploading ? `<div class="upload-progress"><div class="upload-progress-bar" style="width:${state.admin.multiUploadProgress}%"></div><span>${state.admin.multiUploadProgress}%</span></div>` : ''}
+      ${!multiUploading && multiFiles.some(f => f.status === 'done') ? `
+        <div class="form-field" style="margin-top:12px">
+          <label>Categoría para todas (opcional)</label>
+          <input id="multi-upload-category" list="media-categories" placeholder="Manicure Ruso, Poligel...">
+        </div>
+        <button class="btn btn-primary" data-save-multi-gallery>GUARDAR ${multiFiles.filter(f => f.status === 'done').length} FOTOS EN GALERÍA</button>
+      ` : ''}
+    ` : ''}
+  </div>`;
+
   return `<div class="card-list">
+    ${multiUploadSection}
     <form class="card" data-media-form="${editing ? esc(editing.id) : ''}">
       <div class="eyebrow">${editing ? 'EDITAR ELEMENTO' : 'NUEVA FOTO O VIDEO'}</div>
       <div class="form-field">
@@ -1814,6 +2166,7 @@ function adminConfiguracion(data) {
     </div>`;
 
   return `<div class="card-list">
+    ${state.admin.configSuccess ? `<div class="success-inline">${esc(state.admin.configSuccess)}</div>` : ''}
     <div class="card">
       <div class="eyebrow">MARCA</div>
       <form data-settings-form="brand">
@@ -1901,14 +2254,15 @@ function adminConfiguracion(data) {
 async function saveSettings(section, formData) {
   state.admin.configSaving = true;
   state.admin.error = '';
+  state.admin.configSuccess = '';
   render();
   try {
     let body = {};
-    if (section === 'brand' || section === 'contact' || section === 'booking') {
+    if (section === 'brand' || section === 'contact') {
       body = Object.fromEntries(formData.entries());
-      if (section === 'booking') {
-        body.times = String(body.times || '').split(',').map(t => t.trim()).filter(t => /^\d{2}:\d{2}$/.test(t));
-      }
+    } else if (section === 'booking') {
+      body = Object.fromEntries(formData.entries());
+      body.times = String(body.times || '').split(',').map(t => t.trim()).filter(t => /^\d{2}:\d{2}$/.test(t));
     } else if (section === 'config') {
       const parseList = v => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
       body = {
@@ -1920,9 +2274,13 @@ async function saveSettings(section, formData) {
         galleryCategories: parseList(formData.get('cfg_galleryCategories'))
       };
     }
-    await api(`/api/admin/settings/${section}`, { method: 'POST', body });
+    const result = await api(`/api/admin/settings/${section}`, { method: 'POST', body });
     await refreshPublicConfig();
     await loadAdminDashboard();
+    // Refresh configDraft with newly saved data
+    state.admin.configDraft = JSON.parse(JSON.stringify(state.salonConfig || {}));
+    state.admin.configSuccess = `✓ ${section === 'brand' ? 'Marca' : section === 'contact' ? 'Contacto' : section === 'booking' ? 'Horarios' : 'Listas'} guardado correctamente.`;
+    setTimeout(() => { state.admin.configSuccess = ''; render(); }, 4000);
   } catch (err) {
     state.admin.error = err.message;
   }
@@ -1934,10 +2292,13 @@ async function saveHeroImages() {
   const cfg = state.salonConfig || {};
   state.admin.configSaving = true;
   state.admin.error = '';
+  state.admin.configSuccess = '';
   render();
   try {
     await api('/api/admin/settings/hero-images', { method: 'POST', body: { images: cfg.heroImages || [] } });
     await refreshPublicConfig();
+    state.admin.configSuccess = '✓ Fotos hero guardadas correctamente.';
+    setTimeout(() => { state.admin.configSuccess = ''; render(); }, 4000);
   } catch (err) {
     state.admin.error = err.message;
   }
@@ -1958,7 +2319,7 @@ function render() {
           : state.tab === 'academia'
             ? academiaScreen()
             : homeScreen();
-  app.innerHTML = `${state.mode !== 'admin' ? topSwitch() : ''}${body}${state.mode !== 'admin' && state.serviceModalId ? serviceDetailModal() : ''}${state.mode !== 'admin' && state.lightbox ? lightboxOverlay() : ''}`;
+  app.innerHTML = `${body}${state.mode !== 'admin' && state.serviceModalId ? serviceDetailModal() : ''}${state.mode !== 'admin' && state.lightbox ? lightboxOverlay() : ''}`;
   afterRender();
 }
 
@@ -2111,6 +2472,23 @@ app.addEventListener('click', async event => {
   }
   if (target.dataset.markNotification) return markNotificationRead(target.dataset.markNotification);
   if (target.hasAttribute('data-mark-all-notifications')) return markAllNotificationsRead();
+  if (target.hasAttribute('data-clear-all-notifications')) return clearAllNotifications();
+  if (target.dataset.deleteNotification) return deleteNotification(target.dataset.deleteNotification);
+  if (target.dataset.agendaView) {
+    state.admin.agendaView = target.dataset.agendaView;
+    if (target.dataset.agendaView === 'weekly') loadWeeklyAppointments();
+    return render();
+  }
+  if (target.hasAttribute('data-open-manual-booking')) return openManualBooking();
+  if (target.hasAttribute('data-close-manual-booking')) {
+    state.admin.manualBooking = null;
+    return render();
+  }
+  if (target.hasAttribute('data-confirm-manual-booking')) return submitManualBooking();
+  if (target.hasAttribute('data-save-multi-gallery')) {
+    const cat = document.getElementById('multi-upload-category')?.value || '';
+    return saveMultiUploadToGallery(cat);
+  }
   if (target.dataset.adminTab) {
     state.admin.tab = target.dataset.adminTab;
     if (state.admin.tab !== 'clientas') state.admin.selectedClientId = null;
@@ -2200,6 +2578,14 @@ app.addEventListener('click', async event => {
     return render();
   }
   if (target.dataset.deleteService) return deleteServiceEntry(target.dataset.deleteService);
+  if (target.dataset.viewServiceImages) {
+    const svc = (state.admin.data?.services || []).find(s => s.id === target.dataset.viewServiceImages);
+    if (svc) {
+      const imgs = (svc.imageUrls?.length ? svc.imageUrls : (svc.imageUrl ? [svc.imageUrl] : [])).filter(Boolean);
+      if (imgs.length) openLightbox(imgs.map(url => ({ url, kind: 'image', title: svc.name })), 0);
+    }
+    return;
+  }
   if (target.dataset.toggleFeaturedService) return toggleFeaturedService(target.dataset.toggleFeaturedService, target.dataset.featured);
   if (target.dataset.editMedia) {
     state.admin.editingMediaId = target.dataset.editMedia;
@@ -2222,6 +2608,7 @@ app.addEventListener('input', event => {
   const el = event.target;
   if (el.dataset.field) state.booking[el.dataset.field] = el.value;
   if (el.dataset.adminField) state.admin[el.dataset.adminField] = el.value;
+  if (el.dataset.mbField && state.admin.manualBooking) state.admin.manualBooking[el.dataset.mbField] = el.value;
   if (el.dataset.academiaField) state.academia[el.dataset.academiaField] = el.value;
   if (el.hasAttribute('data-rebook-whatsapp')) state.booking.rebook.whatsapp = el.value;
   if (el.hasAttribute('data-admin-clients-search')) {
@@ -2251,6 +2638,10 @@ app.addEventListener('input', event => {
 
 app.addEventListener('change', async event => {
   const el = event.target;
+  // Manual booking selects
+  if (el.dataset.mbField && state.admin.manualBooking) {
+    state.admin.manualBooking[el.dataset.mbField] = el.value;
+  }
   if (el.matches('[data-booking-date-input]')) {
     state.booking.date = el.value;
     state.booking.time = null;
@@ -2262,6 +2653,9 @@ app.addEventListener('change', async event => {
   }
   if (el.matches('[data-media-file-input]')) {
     return handleMediaFileSelected(el);
+  }
+  if (el.matches('[data-multi-upload-input]')) {
+    return handleMultiUploadFiles(el);
   }
   if (el.dataset.heroImgFile !== undefined) {
     const idx = Number(el.dataset.heroImgFile);
