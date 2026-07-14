@@ -29,12 +29,14 @@
   per-request. See docs/SAAS_DEPLOYMENT.md.
 */
 const http = require('http');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
 const { getSalonBySlug } = require('./lib/tenant');
 const { verifyStorageBucket } = require('./lib/uploads');
 const { SITE_URL } = require('./lib/config');
+const logger = require('./lib/logger');
 
 // P0: the social-preview tags in index.html hardcode https://blackrococo.mx.
 // og:image MUST be an absolute URL that actually resolves — WhatsApp, Facebook
@@ -100,16 +102,40 @@ async function handleApi(req, res, pathname, url) {
     // --- Public routes (no admin session required) ---
     const publicCtx = { req, res, pathname, url, salonId, salon };
 
-    if ((req.method === 'POST' && pathname === '/api/bookings') || (req.method === 'GET' && pathname === '/api/availability') || (req.method === 'GET' && pathname === '/api/rebook')) {
-      const db = await readDb(salonId);
+    // STORY 2.5 — scoped reads on the PUBLIC hot path.
+    //
+    // These three routes are ~99% of all traffic. Each now loads ONLY the
+    // collections it uses instead of all eleven. Anything omitted here throws
+    // on access (see guardUnloaded in lib/store.js), so a wrong list fails
+    // loudly in the regression suite rather than silently returning [] — which,
+    // for `appointments`, would advertise every booked slot as free.
+    if (req.method === 'GET' && pathname === '/api/availability') {
+      // Needs the service (for duration) and existing appointments (for overlap).
+      const db = await readDb(salonId, ['services', 'appointments']);
+      if (await bookings.handlePublicRoutes({ ...publicCtx, db })) return;
+    }
+    if (req.method === 'GET' && pathname === '/api/rebook') {
+      const db = await readDb(salonId, ['clients', 'appointments', 'services']);
+      if (await bookings.handlePublicRoutes({ ...publicCtx, db })) return;
+    }
+    if (req.method === 'POST' && pathname === '/api/bookings') {
+      // The booking workflow touches the most: service, slot, client, promo,
+      // and it writes a notification.
+      const db = await readDb(salonId, [
+        'services', 'appointments', 'clients', 'promotions', 'notifications'
+      ]);
       if (await bookings.handlePublicRoutes({ ...publicCtx, db })) return;
     }
     if (req.method === 'GET' && pathname === '/api/config') {
-      const db = await readDb(salonId);
+      // The homepage. Never touches appointments, clients, notifications or
+      // client photos — which at scale is the bulk of the database.
+      const db = await readDb(salonId, [
+        'services', 'media', 'promotions', 'courses', 'staff', 'posts'
+      ]);
       if (await publicConfig.handlePublicRoutes({ ...publicCtx, db })) return;
     }
     if (req.method === 'POST' && pathname === '/api/course-registrations') {
-      const db = await readDb(salonId);
+      const db = await readDb(salonId, ['courses', 'courseRegistrations', 'notifications']);
       if (await coursesDomain.handlePublicRoutes({ ...publicCtx, db })) return;
     }
     if (await adminAuth.handlePublicRoutes(publicCtx)) return;
@@ -117,6 +143,12 @@ async function handleApi(req, res, pathname, url) {
     // --- Admin routes (session required) ---
     if (pathname.startsWith('/api/admin/')) {
       if (!adminAuth.requireAdmin(req, res)) return;
+      // Admin routes deliberately load everything. They run through a handler
+      // CHAIN (each domain gets a chance to match), so the needed collections
+      // aren't known until a handler claims the request. Scoping would mean
+      // resolving the route twice. It is also a single user at low volume — the
+      // dashboard genuinely needs every collection anyway — so the read
+      // amplification that matters (the public hot path, above) is already gone.
       const db = await readDb(salonId);
       const adminCtx = { req, res, pathname, url, db, salonId, salon };
 
@@ -141,8 +173,15 @@ async function handleApi(req, res, pathname, url) {
 
     return json(res, 404, { error: 'API route not found' });
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] ${req.method} ${pathname} ->`, err.stack || err.message);
-    return json(res, 500, { error: 'Ocurrió un error inesperado. Intenta de nuevo en unos momentos.' });
+    // The full error (stack, Supabase text) goes to the SERVER log only. The
+    // client gets a generic message plus a correlation id — enough to report the
+    // problem, nothing that reveals the schema, the query, or internal paths.
+    const errorId = crypto.randomBytes(4).toString('hex');
+    logger.error(`${req.method} ${pathname} failed [${errorId}]`, err);
+    return json(res, 500, {
+      error: 'Ocurrió un error inesperado. Intenta de nuevo en unos momentos.',
+      errorId
+    });
   }
 }
 
@@ -231,28 +270,68 @@ const server = http.createServer((req, res) => {
       // handleApi is async: a rejected promise here would become an
       // unhandledRejection, which Node also treats as fatal. Catch it.
       return handleApi(req, res, pathname, url).catch(err => {
-        console.error(`[${new Date().toISOString()}] unhandled API rejection ${req.method} ${pathname} ->`, err.stack || err.message);
-        if (!res.headersSent) json(res, 500, { error: 'Ocurrió un error inesperado.' });
+        const errorId = crypto.randomBytes(4).toString('hex');
+        logger.error(`unhandled API rejection ${req.method} ${pathname} [${errorId}]`, err);
+        if (!res.headersSent) json(res, 500, { error: 'Ocurrió un error inesperado.', errorId });
       });
     }
     return serveStatic(req, res, pathname);
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] request handler threw ${req.method} ${pathname} ->`, err.stack || err.message);
+    logger.error(`request handler threw ${req.method} ${pathname}`, err);
     if (!res.headersSent) text(res, 500, 'Internal error');
   }
 });
 
+// STORY 1.5 — deployment preflight.
+//
+// Every one of these used to fail LATE and obscurely: a missing SESSION_SECRET
+// silently logged every admin out on each redeploy; a wrong SALON_SLUG killed
+// startup with a confusing error; a default admin password shipped to
+// production unnoticed. Check them all up front and say exactly what is wrong.
+function preflight() {
+  const errors = [];
+  const warnings = [];
+
+  if (USE_SUPABASE) {
+    if (!process.env.SESSION_SECRET) {
+      errors.push('SESSION_SECRET is not set. Without it a new secret is generated on every boot, so every redeploy logs the admin out. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+    }
+    if (!process.env.SALON_SLUG) {
+      warnings.push(`SALON_SLUG is not set; falling back to "${SALON_SLUG}". This must match the slug column of your row in the salons table.`);
+    }
+    if (!SITE_URL) {
+      warnings.push('SITE_URL is not set. Social link previews (og:image) will fall back to the request Host, which is usually correct but not guaranteed behind a proxy.');
+    }
+  }
+
+  if (!ADMIN_PASSWORD || /change-this|rococo2026/i.test(ADMIN_PASSWORD)) {
+    const msg = 'ADMIN_PASSWORD is still the default/example value. Change it before exposing this deployment.';
+    if (logger.isProduction) errors.push(msg);
+    else warnings.push(msg);
+  }
+
+  for (const w of warnings) logger.warn(`PREFLIGHT: ${w}`);
+
+  if (errors.length) {
+    for (const e of errors) logger.error(`PREFLIGHT: ${e}`);
+    logger.error('Refusing to start with an unsafe configuration. See .env.example.');
+    process.exit(1);
+  }
+}
+
 async function startServer() {
+  preflight();
+
   if (USE_SUPABASE) {
     const salon = await getSalonBySlug(SALON_SLUG);
     if (!salon) {
-      console.error(`\nFATAL: no salon found with slug "${SALON_SLUG}" in Supabase.`);
-      console.error('Run sql/schema.sql (or check the salons table) and set SALON_SLUG to match, then restart.\n');
+      logger.error(`FATAL: no salon found with slug "${SALON_SLUG}" in Supabase.`);
+      logger.error('Run sql/schema.sql, then every file in sql/migrations/, and set SALON_SLUG to match. Then restart.');
       process.exit(1);
     }
     SALON = salon;
     SALON_ID = salon.id;
-    console.log(`Connected to Supabase salon "${salon.name}" (slug: ${SALON_SLUG}).`);
+    logger.info(`Connected to Supabase salon "${salon.name}"`, { slug: SALON_SLUG });
 
     // Fail-fast on storage misconfiguration. Every image upload in the app
     // (hero, services, gallery, courses, posts) writes to this one bucket, so
@@ -261,40 +340,50 @@ async function startServer() {
     try {
       const storage = await verifyStorageBucket();
       if (storage.ok) {
-        console.log(`Storage bucket "${storage.bucket}" OK (public).`);
+        logger.info(`Storage bucket "${storage.bucket}" OK (public).`);
       } else {
-        console.warn('\n⚠  STORAGE NOT READY — las subidas de fotos van a fallar.');
-        console.warn(`   Motivo: ${storage.reason}`);
-        if (storage.buckets) console.warn(`   Buckets encontrados: ${storage.buckets.join(', ') || '(ninguno)'}`);
-        console.warn('   Arreglo: crea un bucket PÚBLICO con ese nombre en Supabase → Storage,');
-        console.warn('   o define SUPABASE_STORAGE_BUCKET con el nombre correcto.\n');
+        logger.warn('STORAGE NOT READY — image uploads will fail.', {
+          reason: storage.reason,
+          bucketsFound: storage.buckets,
+          fix: 'Create a PUBLIC bucket with that name in Supabase -> Storage, or set SUPABASE_STORAGE_BUCKET to the correct name.'
+        });
       }
     } catch (err) {
-      console.warn(`⚠  No se pudo verificar el bucket de storage: ${err.message}`);
+      logger.warn('Could not verify the storage bucket', err);
     }
   }
 
-  setTimeout(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 5000);
-  setInterval(() => notificationsDomain.processClientReminders(SALON_ID).catch(err => console.error('processClientReminders error:', err.message)), 10 * 60 * 1000);
+  const runReminders = () => notificationsDomain
+    .processClientReminders(SALON_ID)
+    .catch(err => logger.error('processClientReminders failed', err));
+  setTimeout(runReminders, 5000);
+  setInterval(runReminders, 10 * 60 * 1000);
 
   // Last line of defence. A single unhandled throw anywhere must not be able to
   // take the salon's booking site offline. Log loudly and keep serving: a
   // half-broken request is strictly better than a dead process.
   process.on('uncaughtException', err => {
-    console.error(`[${new Date().toISOString()}] UNCAUGHT EXCEPTION (server kept alive):`, err.stack || err.message);
+    logger.error('UNCAUGHT EXCEPTION (server kept alive)', err);
   });
   process.on('unhandledRejection', err => {
-    console.error(`[${new Date().toISOString()}] UNHANDLED REJECTION (server kept alive):`, (err && err.stack) || err);
+    logger.error('UNHANDLED REJECTION (server kept alive)', err);
   });
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Black Rococo running on port ${PORT}`);
-    console.log(`Admin login: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
-    console.log(`Reminder checks: ${CLIENT_REMINDER_HOURS.join(', ')} hours before appointment`);
+    logger.info(`Black Rococo listening on port ${PORT}`, {
+      mode: USE_SUPABASE ? 'supabase' : 'local-json',
+      env: logger.isProduction ? 'production' : 'development'
+    });
+    // STORY 1.6: this used to print `Admin login: <email> / <password>` in
+    // plaintext — putting the admin password straight into Railway's deploy log,
+    // where it is visible to anyone with dashboard access and retained forever.
+    // The credential hint is now development-only and never prints the password.
+    logger.debug(`Admin email: ${ADMIN_EMAIL} (password from ADMIN_PASSWORD env var)`);
+    logger.info(`Reminder checks: ${CLIENT_REMINDER_HOURS.join(', ')}h before appointment`);
   });
 }
 
 startServer().catch(err => {
-  console.error('FATAL: failed to start server:', err.message);
+  logger.error('FATAL: failed to start server', err);
   process.exit(1);
 });

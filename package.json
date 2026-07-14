@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "health": "node -e \"fetch('http://localhost:3000/api/health').then(r=>r.json()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\""
+    "health": "node -e \"fetch('http://localhost:3000/api/health').then(r=>r.json()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\"",
+    "test": "node test/schema.test.js && node test/store-diff.test.js && node test/scoping.test.js && node test/timezone.test.js && node test/carousel.test.js",
+    "test:regression": "./test/run-regression.sh"
   },
   "keywords": [
     "salon",
@@ -20,7 +22,9 @@
     "node": ">=18 <=24"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.2",
+    "@supabase/supabase-js": "^2.110.2"
+  },
+  "devDependencies": {
     "jsdom": "^29.1.1"
   }
 }

@@ -2,26 +2,26 @@
   "settings": {
     "brand": {
       "name": "Black Rococo",
-      "tagline": "NUEVO TAGLINE",
-      "heroTitle": "HT",
-      "heroSubtitle": "HS",
-      "specialties": "SP",
+      "tagline": "TAG-REG",
+      "heroTitle": "HT-REG",
+      "heroSubtitle": "HS-REG",
+      "specialties": "SP-REG",
       "rating": "4.9",
-      "socialProof": "SPF",
-      "footer": "FT"
+      "socialProof": "PROOF",
+      "footer": "FOOT-REG"
     },
     "contact": {
-      "address1": "Av. Vallarta 1234",
-      "address2": "Guadalajara, Jalisco",
-      "hours1": "L-V 10-19",
+      "address1": "Calzada de los Pirules 260",
+      "address2": "Ciudad Granja, Zapopan",
+      "hours1": "L-S 10:00-19:00",
       "hours2": "",
-      "whatsappNumber": "3331112222",
-      "whatsappUrl": "https://api.whatsapp.com/send/?phone=3331112222",
-      "mapsUrl": "",
-      "instagramUrl": "",
-      "instagramHandle": "",
-      "tiktokUrl": "",
-      "facebookUrl": ""
+      "whatsappNumber": "3326553522",
+      "whatsappUrl": "https://api.whatsapp.com/send/?phone=3326553522",
+      "mapsUrl": "https://maps.google.com/x",
+      "instagramUrl": "https://instagram.com/x",
+      "instagramHandle": "@x",
+      "tiktokUrl": "https://tiktok.com/@x",
+      "facebookUrl": "https://facebook.com/x"
     },
     "promo": {
       "enabled": true,
@@ -35,13 +35,11 @@
         "11:00",
         "12:00",
         "13:00",
-        "14:00",
         "16:00",
         "17:00",
-        "18:00",
-        "19:00"
+        "18:00"
       ],
-      "confirmNote": ""
+      "confirmNote": "NOTE-REG"
     },
     "featuredServiceIds": [
       "rusogelish",
@@ -85,38 +83,48 @@
     },
     "googleCalendarIntegration": {},
     "config": {
-      "whatsappNumber": "3312345678",
+      "whatsappNumber": "3326553522",
       "colors": [
-        "Nude",
         "Rojo",
-        "Negro",
-        "Rosa"
+        "Nude"
       ],
       "bebidas": [
-        "Café",
-        "Té",
-        "Agua"
+        "Café"
       ],
       "estilos": [
-        "Natural",
-        "French",
-        "Editorial"
+        "French"
       ],
       "serviceCategories": [
         "MANOS",
-        "PIES",
-        "EXTRAS"
+        "PIES"
       ],
       "galleryCategories": [
-        "Manicure Ruso",
-        "Poligel",
-        "Pedicure"
+        "Poligel"
       ],
-      "heroImages": [],
+      "heroImages": [
+        {
+          "url": "/hero1.jpg",
+          "title": "H1",
+          "subtitle": "S1"
+        },
+        {
+          "url": "/hero2.jpg",
+          "title": "H2",
+          "subtitle": "S2"
+        },
+        {
+          "url": "/hero3.jpg",
+          "title": "H3",
+          "subtitle": "S3"
+        }
+      ],
       "aboutUs": {
         "title": "Sobre Nosotros",
-        "text": "Somos un estudio profesional de uñas en Ciudad Granja, Zapopan. Nos especializamos en manicure ruso, poligel, rubber base, gelish y pedicure spa. Cada servicio está diseñado para ofrecer resultados impecables en un ambiente cálido y exclusivo.",
-        "images": []
+        "text": "ABOUT-REG",
+        "images": [
+          "/ab1.jpg",
+          "/ab2.jpg"
+        ]
       }
     }
   },
@@ -228,6 +236,34 @@
       "sort": 90,
       "imageUrl": "",
       "imageUrls": []
+    },
+    {
+      "id": "svc_1002",
+      "cat": "MANOS",
+      "name": "REG Test Service",
+      "desc": "regression",
+      "price": 500,
+      "dur": 60,
+      "imageUrl": "/a.jpg",
+      "imageUrls": [
+        "/a.jpg",
+        "/b.jpg",
+        "/c.jpg"
+      ],
+      "active": true,
+      "sort": 0
+    },
+    {
+      "id": "svc_1003",
+      "cat": "MANOS",
+      "name": "Dbg",
+      "desc": "",
+      "price": 400,
+      "dur": 60,
+      "imageUrl": "",
+      "imageUrls": [],
+      "active": true,
+      "sort": 0
     }
   ],
   "clients": [
@@ -342,6 +378,70 @@
       "allergies": "",
       "createdAt": "2026-07-13T20:52:27.624Z",
       "updatedAt": "2026-07-13T20:52:27.624Z"
+    },
+    {
+      "id": "cli_1008",
+      "name": "Cliente Editado",
+      "whatsapp": "3331110001",
+      "email": "",
+      "instagram": "",
+      "birthday": "",
+      "styleChoice": "",
+      "colorChoice": "Rojo",
+      "drinkChoice": "Café",
+      "timePreference": "",
+      "notes": "NOTES-REG",
+      "allergies": "ALG-REG",
+      "createdAt": "2026-07-14T01:39:03.735Z",
+      "updatedAt": "2026-07-14T01:39:03.903Z"
+    },
+    {
+      "id": "cli_1009",
+      "name": "Walk-in Manual",
+      "whatsapp": "3331110003",
+      "email": "",
+      "instagram": "",
+      "birthday": "",
+      "styleChoice": "",
+      "colorChoice": "",
+      "drinkChoice": "",
+      "timePreference": "",
+      "notes": "",
+      "allergies": "",
+      "createdAt": "2026-07-14T01:39:03.755Z",
+      "updatedAt": "2026-07-14T01:39:03.755Z"
+    },
+    {
+      "id": "cli_1010",
+      "name": "Rebook Test",
+      "whatsapp": "3331110004",
+      "email": "",
+      "instagram": "",
+      "birthday": "",
+      "styleChoice": "",
+      "colorChoice": "",
+      "drinkChoice": "",
+      "timePreference": "",
+      "notes": "",
+      "allergies": "",
+      "createdAt": "2026-07-14T01:39:03.816Z",
+      "updatedAt": "2026-07-14T01:39:03.816Z"
+    },
+    {
+      "id": "cli_1011",
+      "name": "Promo Cliente",
+      "whatsapp": "3331110009",
+      "email": "",
+      "instagram": "",
+      "birthday": "",
+      "styleChoice": "",
+      "colorChoice": "",
+      "drinkChoice": "",
+      "timePreference": "",
+      "notes": "",
+      "allergies": "",
+      "createdAt": "2026-07-14T01:39:03.829Z",
+      "updatedAt": "2026-07-14T01:39:03.829Z"
     }
   ],
   "appointments": [
@@ -526,114 +626,143 @@
       "remindersSent": {},
       "createdAt": "2026-07-13T20:52:27.624Z",
       "googleEventId": null
+    },
+    {
+      "id": "apt_1008",
+      "folio": "BR-1008",
+      "clientId": "cli_1008",
+      "serviceId": "svc_1001",
+      "date": "2026-07-20",
+      "time": "11:00",
+      "status": "cancelled",
+      "preferencesSnapshot": {
+        "styleChoice": "",
+        "colorChoice": "",
+        "drinkChoice": "",
+        "timePreference": "",
+        "notes": "",
+        "allergies": ""
+      },
+      "finalPrice": 450,
+      "appliedPromotion": {
+        "id": "promo_1001",
+        "code": "",
+        "label": "TEST",
+        "type": "percent",
+        "value": 10,
+        "discountAmount": 50,
+        "originalPrice": 500
+      },
+      "remindersSent": {},
+      "createdAt": "2026-07-14T01:39:03.735Z",
+      "googleEventId": null
+    },
+    {
+      "id": "apt_1009",
+      "folio": "BR-1009",
+      "clientId": "cli_1009",
+      "serviceId": "svc_1001",
+      "date": "2026-07-20",
+      "time": "12:00",
+      "status": "new",
+      "preferencesSnapshot": {
+        "styleChoice": "",
+        "colorChoice": "",
+        "drinkChoice": "",
+        "timePreference": "",
+        "notes": "",
+        "allergies": ""
+      },
+      "finalPrice": 450,
+      "appliedPromotion": {
+        "id": "promo_1001",
+        "code": "",
+        "label": "TEST",
+        "type": "percent",
+        "value": 10,
+        "discountAmount": 50,
+        "originalPrice": 500
+      },
+      "remindersSent": {},
+      "createdAt": "2026-07-14T01:39:03.755Z",
+      "googleEventId": null
+    },
+    {
+      "id": "apt_1010",
+      "folio": "BR-1010",
+      "clientId": "cli_1010",
+      "serviceId": "svc_1001",
+      "date": "2026-07-20",
+      "time": "11:00",
+      "status": "new",
+      "preferencesSnapshot": {
+        "styleChoice": "",
+        "colorChoice": "",
+        "drinkChoice": "",
+        "timePreference": "",
+        "notes": "",
+        "allergies": ""
+      },
+      "finalPrice": 450,
+      "appliedPromotion": {
+        "id": "promo_1001",
+        "code": "",
+        "label": "TEST",
+        "type": "percent",
+        "value": 10,
+        "discountAmount": 50,
+        "originalPrice": 500
+      },
+      "remindersSent": {},
+      "createdAt": "2026-07-14T01:39:03.817Z",
+      "googleEventId": null
+    },
+    {
+      "id": "apt_1011",
+      "folio": "BR-1011",
+      "clientId": "cli_1011",
+      "serviceId": "svc_1001",
+      "date": "2026-07-20",
+      "time": "13:00",
+      "status": "new",
+      "preferencesSnapshot": {
+        "styleChoice": "",
+        "colorChoice": "",
+        "drinkChoice": "",
+        "timePreference": "",
+        "notes": "",
+        "allergies": ""
+      },
+      "finalPrice": 400,
+      "appliedPromotion": {
+        "id": "promo_1002",
+        "code": "",
+        "label": "REG20",
+        "type": "percent",
+        "value": 20,
+        "discountAmount": 100,
+        "originalPrice": 500
+      },
+      "remindersSent": {},
+      "createdAt": "2026-07-14T01:39:03.829Z",
+      "googleEventId": null
     }
   ],
   "posts": [],
   "counters": {
-    "appointment": 1007,
-    "client": 1007,
+    "appointment": 1011,
+    "client": 1011,
     "post": 1000,
-    "notification": 1006,
-    "promotion": 1001,
-    "course": 1001,
-    "registration": 1001,
-    "service": 1000,
-    "media": 1000,
-    "staff": 1001,
-    "clientPhoto": 1001
+    "notification": 1011,
+    "promotion": 1002,
+    "course": 1002,
+    "registration": 1002,
+    "service": 1003,
+    "media": 1002,
+    "staff": 1002,
+    "clientPhoto": 1002
   },
-  "notifications": [
-    {
-      "id": "not_1001",
-      "kind": "new_booking",
-      "channel": "admin_panel",
-      "title": "Nueva cita BR-1003",
-      "message": "Final Test · Manicure ruso · 2026-09-30 12:00",
-      "appointmentId": "apt_1003",
-      "status": "unread",
-      "unread": true,
-      "actionLabel": "multi",
-      "actionUrl": "{\"whatsapp\":{\"label\":\"WhatsApp clienta\",\"url\":\"https://api.whatsapp.com/send/?phone=5213300001111&text=Hola%20Final%20Test%20%E2%9C%A8%20Te%20recordamos%20tu%20cita%20en%20Black%20Rococo.%0AServicio%3A%20Manicure%20ruso%0AFecha%3A%202026-09-30%0AHora%3A%2012%3A00%0ADirecci%C3%B3n%3A%20Calzada%20de%20los%20Pirules%20260%2C%20Ciudad%20Granja%2C%20Zapopan%2C%20Jalisco%20%C2%B7%20Ventana%20y%20port%C3%B3n%20verde%0ATenemos%20anotada%20tu%20bebida%20favorita%3A%20Caf%C3%A9.%0AResponde%20este%20mensaje%20si%20necesitas%20ayuda.\"},\"calendar\":{\"label\":\"Agregar a Calendar\",\"url\":\"https://calendar.google.com/calendar/render?action=TEMPLATE&text=Black+Rococo+-+Manicure+ruso+-+Final+Test&dates=20260930T120000%2F20260930T130000&ctz=America%2FMexico_City&details=Folio%3A+BR-1003%0AClienta%3A+Final+Test%0AWhatsApp%3A+3300001111%0AServicio%3A+Manicure+ruso%0AEstado%3A+NUEVA%0ABebida%3A+Caf%C3%A9&location=Calzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan%2C+Jalisco+%C2%B7+Ventana+y+port%C3%B3n+verde\",\"status\":\"setup_required\",\"message\":null},\"agenda\":{\"label\":\"Ver agenda\",\"url\":null}}",
-      "error": "",
-      "createdAt": "2026-07-13T01:43:08.656Z",
-      "updatedAt": "2026-07-13T01:43:08.656Z"
-    },
-    {
-      "id": "not_1002",
-      "kind": "new_booking",
-      "channel": "admin_panel",
-      "title": "Nueva cita BR-1004",
-      "message": "Regresion Test · Manicure ruso · 2026-07-16 11:00",
-      "appointmentId": "apt_1004",
-      "status": "unread",
-      "unread": true,
-      "actionLabel": "multi",
-      "actionUrl": "{\"whatsapp\":{\"label\":\"WhatsApp clienta\",\"url\":\"https://api.whatsapp.com/send/?phone=5213331112222&text=Hola%20Regresion%20Test%20%E2%9C%A8%20Te%20recordamos%20tu%20cita%20en%20Black%20Rococo.%0AServicio%3A%20Manicure%20ruso%0AFecha%3A%202026-07-16%0AHora%3A%2011%3A00%0ADirecci%C3%B3n%3A%20Calzada%20de%20los%20Pirules%20260%2C%20Ciudad%20Granja%2C%20Zapopan%2C%20Jalisco%20%C2%B7%20Ventana%20y%20port%C3%B3n%20verde%0AResponde%20este%20mensaje%20si%20necesitas%20ayuda.\"},\"calendar\":{\"label\":\"Agregar a Calendar\",\"url\":\"https://calendar.google.com/calendar/render?action=TEMPLATE&text=Black+Rococo+-+Manicure+ruso+-+Regresion+Test&dates=20260716T110000%2F20260716T120000&ctz=America%2FMexico_City&details=Folio%3A+BR-1004%0AClienta%3A+Regresion+Test%0AWhatsApp%3A+3331112222%0AServicio%3A+Manicure+ruso%0AEstado%3A+NUEVA&location=Calzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan%2C+Jalisco+%C2%B7+Ventana+y+port%C3%B3n+verde\",\"status\":\"setup_required\",\"message\":null},\"agenda\":{\"label\":\"Ver agenda\",\"url\":null}}",
-      "error": "",
-      "createdAt": "2026-07-13T20:34:01.930Z",
-      "updatedAt": "2026-07-13T20:34:01.930Z"
-    },
-    {
-      "id": "not_1003",
-      "kind": "new_booking",
-      "channel": "admin_panel",
-      "title": "Nueva cita BR-1005",
-      "message": "Walkin OK · Manicure ruso · 2026-07-16 13:00",
-      "appointmentId": "apt_1005",
-      "status": "unread",
-      "unread": true,
-      "actionLabel": "multi",
-      "actionUrl": "{\"whatsapp\":{\"label\":\"WhatsApp clienta\",\"url\":\"https://api.whatsapp.com/send/?phone=5213335556666&text=Hola%20Walkin%20OK%20%E2%9C%A8%20Te%20recordamos%20tu%20cita%20en%20Black%20Rococo.%0AServicio%3A%20Manicure%20ruso%0AFecha%3A%202026-07-16%0AHora%3A%2013%3A00%0ADirecci%C3%B3n%3A%20Calzada%20de%20los%20Pirules%20260%2C%20Ciudad%20Granja%2C%20Zapopan%2C%20Jalisco%20%C2%B7%20Ventana%20y%20port%C3%B3n%20verde%0AResponde%20este%20mensaje%20si%20necesitas%20ayuda.\"},\"calendar\":{\"label\":\"Agregar a Calendar\",\"url\":\"https://calendar.google.com/calendar/render?action=TEMPLATE&text=Black+Rococo+-+Manicure+ruso+-+Walkin+OK&dates=20260716T130000%2F20260716T140000&ctz=America%2FMexico_City&details=Folio%3A+BR-1005%0AClienta%3A+Walkin+OK%0AWhatsApp%3A+3335556666%0AServicio%3A+Manicure+ruso%0AEstado%3A+NUEVA&location=Calzada+de+los+Pirules+260%2C+Ciudad+Granja%2C+Zapopan%2C+Jalisco+%C2%B7+Ventana+y+port%C3%B3n+verde\",\"status\":\"setup_required\",\"message\":null},\"agenda\":{\"label\":\"Ver agenda\",\"url\":null}}",
-      "error": "",
-      "createdAt": "2026-07-13T20:34:02.013Z",
-      "updatedAt": "2026-07-13T20:34:02.013Z"
-    },
-    {
-      "id": "not_1004",
-      "kind": "new_booking",
-      "channel": "admin_panel",
-      "title": "Nueva cita BR-1006",
-      "message": "Sprint Test · Manicure ruso · 2026-07-18 11:00",
-      "appointmentId": "apt_1006",
-      "status": "unread",
-      "unread": true,
-      "actionLabel": "multi",
-      "actionUrl": "{\"whatsapp\":{\"label\":\"WhatsApp clienta\",\"url\":\"https://api.whatsapp.com/send/?phone=5213334445555&text=Hola%20Sprint%20Test%20%E2%9C%A8%20Te%20recordamos%20tu%20cita%20en%20Black%20Rococo.%0AServicio%3A%20Manicure%20ruso%0AFecha%3A%202026-07-18%0AHora%3A%2011%3A00%0ADirecci%C3%B3n%3A%20%2C%20%0AResponde%20este%20mensaje%20si%20necesitas%20ayuda.\"},\"calendar\":{\"label\":\"Agregar a Calendar\",\"url\":\"https://calendar.google.com/calendar/render?action=TEMPLATE&text=Black+Rococo+-+Manicure+ruso+-+Sprint+Test&dates=20260718T110000%2F20260718T120000&ctz=America%2FMexico_City&details=Folio%3A+BR-1006%0AClienta%3A+Sprint+Test%0AWhatsApp%3A+3334445555%0AServicio%3A+Manicure+ruso%0AEstado%3A+NUEVA&location=%2C\",\"status\":\"setup_required\",\"message\":null},\"agenda\":{\"label\":\"Ver agenda\",\"url\":null}}",
-      "error": "",
-      "createdAt": "2026-07-13T20:52:27.576Z",
-      "updatedAt": "2026-07-13T20:52:27.576Z"
-    },
-    {
-      "id": "not_1005",
-      "kind": "new_booking",
-      "channel": "admin_panel",
-      "title": "Nueva cita BR-1007",
-      "message": "Walk · Manicure ruso · 2026-07-18 12:00",
-      "appointmentId": "apt_1007",
-      "status": "unread",
-      "unread": true,
-      "actionLabel": "multi",
-      "actionUrl": "{\"whatsapp\":{\"label\":\"WhatsApp clienta\",\"url\":\"https://api.whatsapp.com/send/?phone=5213331230000&text=Hola%20Walk%20%E2%9C%A8%20Te%20recordamos%20tu%20cita%20en%20Black%20Rococo.%0AServicio%3A%20Manicure%20ruso%0AFecha%3A%202026-07-18%0AHora%3A%2012%3A00%0ADirecci%C3%B3n%3A%20%2C%20%0AResponde%20este%20mensaje%20si%20necesitas%20ayuda.\"},\"calendar\":{\"label\":\"Agregar a Calendar\",\"url\":\"https://calendar.google.com/calendar/render?action=TEMPLATE&text=Black+Rococo+-+Manicure+ruso+-+Walk&dates=20260718T120000%2F20260718T130000&ctz=America%2FMexico_City&details=Folio%3A+BR-1007%0AClienta%3A+Walk%0AWhatsApp%3A+3331230000%0AServicio%3A+Manicure+ruso%0AEstado%3A+NUEVA&location=%2C\",\"status\":\"setup_required\",\"message\":null},\"agenda\":{\"label\":\"Ver agenda\",\"url\":null}}",
-      "error": "",
-      "createdAt": "2026-07-13T20:52:27.624Z",
-      "updatedAt": "2026-07-13T20:52:27.624Z"
-    },
-    {
-      "id": "not_1006",
-      "kind": "course_registration",
-      "channel": "admin_panel",
-      "title": "Nueva inscripción: Curso Poligel",
-      "message": "Ana Test se registró en \"Curso Poligel\" · WhatsApp: 3331112222",
-      "appointmentId": null,
-      "status": "unread",
-      "unread": true,
-      "actionLabel": "Ver academia",
-      "actionUrl": "",
-      "error": "",
-      "createdAt": "2026-07-13T22:12:12.236Z",
-      "updatedAt": "2026-07-13T22:12:12.236Z"
-    }
-  ],
+  "notifications": [],
   "promotions": [
     {
       "id": "promo_1001",
@@ -651,7 +780,7 @@
       "active": true,
       "autoApply": true,
       "usageLimit": 0,
-      "usageCount": 4,
+      "usageCount": 7,
       "imageUrl": "/uploads/promo.jpg",
       "createdAt": "2026-07-13T15:50:39.583Z",
       "updatedAt": "2026-07-13T15:50:39.583Z"

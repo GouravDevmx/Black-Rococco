@@ -22,7 +22,7 @@ drop function if exists increment_promo_usage(uuid);
 -- SALONS — single row in this table, kept as a table (not hardcoded) so the
 -- data shape stays identical to how the app already reads/writes it.
 -- ----------------------------------------------------------------------------
-create table salons (
+create table if not exists salons (
   id uuid primary key default gen_random_uuid(),
   slug text unique not null,
   name text not null,
@@ -41,7 +41,7 @@ create table salons (
 -- ----------------------------------------------------------------------------
 -- CLIENTS
 -- ----------------------------------------------------------------------------
-create table clients (
+create table if not exists clients (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   name text not null default '',
@@ -59,12 +59,12 @@ create table clients (
   updated_at timestamptz not null default now(),
   unique (salon_id, whatsapp)
 );
-create index idx_clients_salon on clients(salon_id);
+create index if not exists idx_clients_salon on clients(salon_id);
 
 -- ----------------------------------------------------------------------------
 -- SERVICES
 -- ----------------------------------------------------------------------------
-create table services (
+create table if not exists services (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   cat text not null default '',
@@ -79,13 +79,13 @@ create table services (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index idx_services_salon on services(salon_id);
+create index if not exists idx_services_salon on services(salon_id);
 
 -- ----------------------------------------------------------------------------
 -- APPOINTMENTS — the unique index is real DB-level double-booking protection.
 -- google_event_id links to the auto-created Google Calendar event.
 -- ----------------------------------------------------------------------------
-create table appointments (
+create table if not exists appointments (
   id uuid primary key default gen_random_uuid(),
   folio_number bigserial,
   salon_id uuid not null references salons(id) on delete cascade,
@@ -104,16 +104,16 @@ create table appointments (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index idx_appt_salon_date on appointments(salon_id, appt_date);
-create index idx_appt_client on appointments(client_id);
-create unique index uq_appt_slot
+create index if not exists idx_appt_salon_date on appointments(salon_id, appt_date);
+create index if not exists idx_appt_client on appointments(client_id);
+create unique index if not exists uq_appt_slot
   on appointments(salon_id, appt_date, appt_time)
   where status <> 'cancelled';
 
 -- ----------------------------------------------------------------------------
 -- PROMOTIONS
 -- ----------------------------------------------------------------------------
-create table promotions (
+create table if not exists promotions (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   code text not null default '',
@@ -134,7 +134,7 @@ create table promotions (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index idx_promo_salon on promotions(salon_id);
+create index if not exists idx_promo_salon on promotions(salon_id);
 
 create or replace function increment_promo_usage(promo_id uuid)
 returns void as $$
@@ -144,7 +144,7 @@ $$ language sql;
 -- ----------------------------------------------------------------------------
 -- COURSES + REGISTRATIONS
 -- ----------------------------------------------------------------------------
-create table courses (
+create table if not exists courses (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   title text not null default '',
@@ -160,9 +160,9 @@ create table courses (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index idx_courses_salon on courses(salon_id);
+create index if not exists idx_courses_salon on courses(salon_id);
 
-create table course_registrations (
+create table if not exists course_registrations (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   course_id uuid references courses(id) on delete cascade,
@@ -173,12 +173,12 @@ create table course_registrations (
   status text not null default 'new',
   created_at timestamptz not null default now()
 );
-create index idx_courseregs_salon on course_registrations(salon_id);
+create index if not exists idx_courseregs_salon on course_registrations(salon_id);
 
 -- ----------------------------------------------------------------------------
 -- MEDIA LIBRARY (gallery + homepage carousel)
 -- ----------------------------------------------------------------------------
-create table media (
+create table if not exists media (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   kind text not null default 'image',
@@ -193,12 +193,12 @@ create table media (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index idx_media_salon on media(salon_id);
+create index if not exists idx_media_salon on media(salon_id);
 
 -- ----------------------------------------------------------------------------
 -- NOTIFICATIONS (admin panel bell)
 -- ----------------------------------------------------------------------------
-create table notifications (
+create table if not exists notifications (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   appointment_id uuid references appointments(id) on delete set null,
@@ -214,12 +214,12 @@ create table notifications (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index idx_notifications_salon on notifications(salon_id, unread);
+create index if not exists idx_notifications_salon on notifications(salon_id, unread);
 
 -- ----------------------------------------------------------------------------
 -- POSTS (legacy "publish to social" tracking — kept for continuity)
 -- ----------------------------------------------------------------------------
-create table posts (
+create table if not exists posts (
   id uuid primary key default gen_random_uuid(),
   salon_id uuid not null references salons(id) on delete cascade,
   caption text not null default '',
@@ -227,7 +227,7 @@ create table posts (
   targets jsonb not null default '[]'::jsonb,
   published_at timestamptz not null default now()
 );
-create index idx_posts_salon on posts(salon_id);
+create index if not exists idx_posts_salon on posts(salon_id);
 
 -- ============================================================================
 -- ROW LEVEL SECURITY — RLS on, no policies granted to anon/authenticated.
@@ -259,3 +259,21 @@ values (
   '{"times":["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"],"confirmNote":"Te esperamos en punto. Cancelaciones con 12h de anticipación por WhatsApp."}'::jsonb,
   '[]'::jsonb
 );
+
+-- ============================================================================
+-- MIGRATION TRACKING  (STORY 2.7)
+--
+-- Records which migration files have been applied, so a database can always be
+-- told apart from a half-migrated one. Without this there is no way to know
+-- whether 002 and 003 have run — and re-running the wrong thing, or skipping
+-- one, is how a schema silently drifts from the application.
+--
+-- Every migration file ends by inserting its own name here.
+-- ============================================================================
+create table if not exists schema_migrations (
+  version    text primary key,
+  applied_at timestamptz not null default now()
+);
+
+insert into schema_migrations (version) values ('001_schema')
+  on conflict (version) do nothing;

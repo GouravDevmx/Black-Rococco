@@ -53,3 +53,7 @@ alter table promotions add column if not exists image_url text not null default 
 
 -- About Us images need no migration: they live in the existing
 -- salons.salon_config JSONB column under the `aboutUs` key.
+
+-- Record that this migration has been applied (see schema_migrations).
+insert into schema_migrations (version) values ('002_media_surfaces')
+  on conflict (version) do nothing;
